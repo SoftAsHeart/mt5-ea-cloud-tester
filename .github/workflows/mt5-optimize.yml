@@ -5,47 +5,91 @@ on:
 
 jobs:
   run-mt5-tester:
-    runs-on: windows-latest # 4 vCPUs, 16 GB RAM
+    runs-on: windows-latest # 4 x AMD EPYC, 15 GB RAM
     timeout-minutes: 360
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v5
 
-      - name: Download MT5 Binaries from GitHub Release
+      - name: Download MT5 Binaries & Profile from Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path "C:\MT5"
           gh release download mt5-binaries --dir "C:\MT5"
+          Get-ChildItem "C:\MT5" -Filter "*.zip" | ForEach-Object {
+            Expand-Archive -Path $_.FullName -DestinationPath "C:\MT5" -Force
+          }
+          # Flatten if files extracted inside a subfolder
+          $exe = Get-ChildItem "C:\MT5" -Filter "terminal64.exe" -Recurse | Select-Object -First 1
+          if (-not $exe) { throw "terminal64.exe not found!" }
+          if ($exe.DirectoryName -ne "C:\MT5") {
+            Copy-Item "$($exe.DirectoryName)\*" -Destination "C:\MT5\" -Recurse -Force
+          }
           Get-ChildItem "C:\MT5"
 
-      - name: Copy EA, Config & Inject Exness Demo Secrets
+      - name: Prepare Config & Pre-Warm Exness Connection
+        env:
+          DEMO_LOGIN: ${{ secrets.EXNESS_DEMO_LOGIN }}
+          DEMO_PASS: ${{ secrets.EXNESS_DEMO_PASS }}
+          DEMO_SERVER: ${{ secrets.EXNESS_DEMO_SERVER }}
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Experts"
           New-Item -ItemType Directory -Force -Path "C:\MT5\Config"
           New-Item -ItemType Directory -Force -Path "C:\MT5\reports"
           Copy-Item "MQL5\Experts\*.ex5" -Destination "C:\MT5\MQL5\Experts\" -Force
-          Copy-Item "config\servers.dat" -Destination "C:\MT5\Config\servers.dat" -Force
+          if (Test-Path "config\servers.dat") {
+            Copy-Item "config\servers.dat" -Destination "C:\MT5\Config\servers.dat" -Force
+          }
 
-          $content = Get-Content "config\optimize.ini"
-          $content = $content -replace "DEMO_LOGIN_PLACEHOLDER", "${{ secrets.EXNESS_DEMO_LOGIN }}"
-          $content = $content -replace "DEMO_PASS_PLACEHOLDER", "${{ secrets.EXNESS_DEMO_PASS }}"
-          $content = $content -replace "Exness-MT5Trial8", "${{ secrets.EXNESS_DEMO_SERVER }}"
-          Set-Content "C:\MT5\Config\optimize.ini" $content
+          $login = $env:DEMO_LOGIN.Trim()
+          $pass = $env:DEMO_PASS.Trim()
+          $server = $env:DEMO_SERVER.Trim()
+
+          # 1. Create a login-only warm-up config to authenticate & sync symbols first
+          @"
+          [Common]
+          Login=$login
+          Password=$pass
+          Server=$server
+          KeepPrivate=1
+          NewsEnable=0
+          "@ | Set-Content "C:\MT5\Config\warmup.ini"
+
+          Write-Host "Pre-warming Exness login on server: [$server] for account: [$login]..."
+          $warm = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/config:`"C:\MT5\Config\warmup.ini`"" -PassThru
+          Start-Sleep -Seconds 30
+          if (-not $warm.HasExited) {
+            Stop-Process -Id $warm.Id -Force
+            Start-Sleep -Seconds 3
+          }
+
+          # 2. Build clean optimize.ini with exact trimmed secrets
+          $lines = Get-Content "config\optimize.ini"
+          $out = foreach ($line in $lines) {
+            if ($line -match "^Login=") { "Login=$login" }
+            elseif ($line -match "^Password=") { "Password=$pass" }
+            elseif ($line -match "^Server=") { "Server=$server" }
+            else { $line }
+          }
+          $out | Set-Content "C:\MT5\Config\optimize.ini"
+
+          Write-Host "--- Verified Config (Password Masked) ---"
+          $out | Where-Object { $_ -notmatch "^Password=" } | Write-Host
 
       - name: Run MT5 Strategy Tester (Headless 4-Core)
         shell: powershell
         run: |
-          Write-Host "Starting MT5 Optimization on 4 vCPUs..."
-          $proc = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/config:`"C:\MT5\config\optimize.ini`"" -PassThru -Wait
+          Write-Host "Starting MT5 Strategy Tester..."
+          $proc = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/config:`"C:\MT5\Config\optimize.ini`"" -PassThru -Wait
           Write-Host "MT5 exited with code: $($proc.ExitCode)"
 
       - name: Upload Optimization Reports & Logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: mt5-optimization-results
           path: |
