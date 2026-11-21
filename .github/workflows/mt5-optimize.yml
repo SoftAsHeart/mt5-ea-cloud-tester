@@ -1,0 +1,53 @@
+name: MT5 Cloud Genetic Optimization
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-mt5-tester:
+    runs-on: windows-latest # 4 vCPUs, 16 GB RAM
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download & Install Exness MT5 Silently
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path "C:\MT5"
+          Invoke-WebRequest -Uri "https://mql5.com" -OutFile "C:\MT5\exness5setup.exe"
+          Start-Process -FilePath "C:\MT5\exness5setup.exe" -ArgumentList "/auto" -Wait
+          Copy-Item "C:\Program Files\MetaTrader 5 EXNESS\*" -Destination "C:\MT5\" -Recurse -Force
+
+      - name: Copy EA, Config & Inject Exness Demo Secrets
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Experts"
+          New-Item -ItemType Directory -Force -Path "C:\MT5\config"
+          New-Item -ItemType Directory -Force -Path "C:\MT5\reports"
+          Copy-Item "MQL5\Experts\*.ex5" -Destination "C:\MT5\MQL5\Experts\" -Force
+
+          $content = Get-Content "config\optimize.ini"
+          $content = $content -replace "DEMO_LOGIN_PLACEHOLDER", "${{ secrets.EXNESS_DEMO_LOGIN }}"
+          $content = $content -replace "DEMO_PASS_PLACEHOLDER", "${{ secrets.EXNESS_DEMO_PASS }}"
+          $content = $content -replace "Exness-MT5Trial8", "${{ secrets.EXNESS_DEMO_SERVER }}"
+          Set-Content "C:\MT5\config\optimize.ini" $content
+
+      - name: Run MT5 Strategy Tester (Headless 4-Core)
+        shell: powershell
+        run: |
+          Write-Host "Starting MT5 Optimization on 4 vCPUs..."
+          $proc = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/config:`"C:\MT5\config\optimize.ini`"" -PassThru -Wait
+          Write-Host "MT5 exited with code: $($proc.ExitCode)"
+
+      - name: Upload Optimization Reports & Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mt5-optimization-results
+          path: |
+            C:\MT5\reports\
+            C:\MT5\Tester\logs\
+            C:\MT5\Logs\
+          if-no-files-found: warn
