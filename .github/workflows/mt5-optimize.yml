@@ -12,50 +12,14 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Download & Install Exness MT5 Silently
+      - name: Download MT5 Binaries from GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path "C:\MT5"
-          $installer = "C:\MT5\exness5setup.exe"
-          $urls = @(
-            "https://terminal.free",
-            "https://mql5.com",
-            "https://terminal.free"
-          )
-
-          foreach ($u in $urls) {
-            Write-Host "Trying download from: $u"
-            curl.exe -L -f -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "$u" -o "$installer"
-            if ((Test-Path $installer) -and ((Get-Item $installer).Length -gt 1000000)) {
-              Write-Host "Downloaded valid installer ($([math]::Round((Get-Item $installer).Length / 1MB, 2)) MB)"
-              break
-            }
-          }
-
-          if (-not (Test-Path $installer) -or ((Get-Item $installer).Length -le 1000000)) {
-            throw "Failed to download a valid MT5 installer."
-          }
-
-          Start-Process -FilePath $installer -ArgumentList "/auto" -Wait
-
-          # Wait up to 60s for background installer child process to finish writing terminal64.exe
-          $installDir = $null
-          for ($i = 0; $i -lt 30; $i++) {
-            $found = Get-ChildItem "C:\Program Files" -Filter "terminal64.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($found) {
-              $installDir = $found.DirectoryName
-              break
-            }
-            Start-Sleep -Seconds 2
-          }
-
-          if (-not $installDir) {
-            throw "MT5 installation directory not found under C:\Program Files."
-          }
-
-          Write-Host "Found installed MT5 at: $installDir"
-          Start-Sleep -Seconds 3
-          Copy-Item "$installDir\*" -Destination "C:\MT5\" -Recurse -Force
+          gh release download mt5-binaries --dir "C:\MT5"
+          Get-ChildItem "C:\MT5"
 
       - name: Copy EA, Config & Inject Exness Demo Secrets
         shell: powershell
