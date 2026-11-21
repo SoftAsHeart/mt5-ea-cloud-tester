@@ -10,7 +10,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download MT5 Binaries from GitHub Release
         env:
@@ -25,15 +25,16 @@ jobs:
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Experts"
-          New-Item -ItemType Directory -Force -Path "C:\MT5\config"
+          New-Item -ItemType Directory -Force -Path "C:\MT5\Config"
           New-Item -ItemType Directory -Force -Path "C:\MT5\reports"
           Copy-Item "MQL5\Experts\*.ex5" -Destination "C:\MT5\MQL5\Experts\" -Force
+          Copy-Item "config\servers.dat" -Destination "C:\MT5\Config\servers.dat" -Force
 
           $content = Get-Content "config\optimize.ini"
           $content = $content -replace "DEMO_LOGIN_PLACEHOLDER", "${{ secrets.EXNESS_DEMO_LOGIN }}"
           $content = $content -replace "DEMO_PASS_PLACEHOLDER", "${{ secrets.EXNESS_DEMO_PASS }}"
           $content = $content -replace "Exness-MT5Trial8", "${{ secrets.EXNESS_DEMO_SERVER }}"
-          Set-Content "C:\MT5\config\optimize.ini" $content
+          Set-Content "C:\MT5\Config\optimize.ini" $content
 
       - name: Run MT5 Strategy Tester (Headless 4-Core)
         shell: powershell
