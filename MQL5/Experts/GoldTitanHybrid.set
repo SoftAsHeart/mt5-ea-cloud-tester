@@ -1,17 +1,20 @@
-; GoldTitanHybrid Walk-Forward Champion (Pass 309) - Single Backtest Preset
-InpRiskPercent=0.75||0.75||0.25||1.50||N
+### 4. Matching `MQL5/Experts/GoldTitanHybrid.set` (`v2.00` Single-Test Preset)
+
+```ini
+; GoldTitanHybrid v2.00 - MFE/MAE & Kill-Zone Optimized Preset
+InpRiskPercent=1.00||1.00||0.25||1.50||N
 InpMaxDailyLossPct=3.0||3.0||0.5||5.0||N
-InpMaxTotalTradesPerDay=12||10||2||16||N
+InpMaxTotalTradesPerDay=10||8||2||14||N
 InpMaxSpreadPoints=350||300||50||400||N
 InpMagicNumber=2026777||2026777||1||2026777||N
 
 InpAsiaStartHour=0||0||1||0||N
 InpAsiaEndHour=6||6||1||6||N
 InpTradeStartHour=7||7||1||8||N
-InpTradeEndHour=18||17||1||19||N
+InpTradeEndHour=14||13||1||15||N
 InpHardCloseHour=20||20||1||20||N
 InpHardCloseMinute=45||45||1||45||N
-InpMaxHoldMinutes=180||120||60||240||N
+InpMaxHoldMinutes=90||60||30||120||N
 
 InpEnableTrendFVG=true||false||0||true||N
 InpTrendEMAPeriod=50||50||10||60||N
@@ -19,9 +22,8 @@ InpMinTrendADX=20.0||20.0||3.0||26.0||N
 InpMinFVGPoints=180||150||50||250||N
 InpFVGExpiryBars=10||8||4||16||N
 InpMinRejectionWick=0.35||0.25||0.10||0.45||N
-InpMaxTrendPyramid=1||1||1||2||N
-InpTrendTargetRR=2.40||2.00||0.40||2.80||N
-InpTrendTrailATR=0.90||0.80||0.20||1.00||N
+InpTrendTargetRR=2.60||2.20||0.40||3.00||N
+InpTrendTrailATR=1.25||1.00||0.25||1.50||N
 
 InpEnableVwapSweep=true||false||0||true||N
 InpMaxFadeADX=36.0||32.0||4.0||40.0||N
@@ -31,8 +33,10 @@ InpMinSweepPoints=80||80||40||120||N
 InpMaxSweepPoints=2500||2000||500||3000||N
 InpRSIOverbought=75.0||65.0||5.0||75.0||N
 InpRSIOversold=25.0||25.0||5.0||35.0||N
-InpMinSweepRR=1.25||1.10||0.15||1.40||N
+InpMinSweepRR=1.30||1.10||0.15||1.40||N
 
 InpMinVolumeSpike=1.15||1.00||0.15||1.30||N
-InpSL_ATR_Mult=0.55||0.45||0.15||0.75||N
-InpMinSLPoints=1800||1500||500||2500||N
+InpSL_ATR_Mult=0.45||0.35||0.15||0.65||N
+InpMinSLPoints=1350||1200||300||1800||N
+InpBreakevenTriggerRR=1.00||0.85||0.15||1.15||N
+InpPartialCloseRR=1.30||1.20||0.15||1.50||N
