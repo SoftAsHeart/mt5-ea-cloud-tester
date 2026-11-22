@@ -1,33 +1,33 @@
-### 2. `MQL5/Experts/MyTrader50.set` (`108` Passes — Runs in ~2 Minutes)
+### 4. Matching `MQL5/Experts/MyTrader50.set` (`81` Passes — Runs in ~1 Minute)
 
 ```ini
-; My Trader 5.0 Adaptive Regime Walk-Forward Preset (108 passes)
+; My Trader 5.01 Adaptive Asian Sweep Preset (81 passes)
 
-InpRiskPercent=2.0||1.5||0.5||2.5||Y
-InpMaxDailyLossPct=4.0||4.0||0.5||5.0||N
-InpMaxTradesPerDay=3||2||1||4||N
+InpRiskPercent=1.5||1.5||0.5||2.0||N
+InpMaxDailyLossPct=3.5||3.5||0.5||4.5||N
+InpMaxTradesPerDay=2||2||1||3||N
 InpMaxSpreadPoints=350||300||50||400||N
 InpMagicNumber=2026050||2026050||1||2026050||N
 
 InpAsianStartHour=0||0||1||0||N
 InpAsianEndHour=6||6||1||6||N
+InpMinAsianRangePts=3500||2500||1000||4500||Y
 InpTradeStartHour=7||7||1||8||N
 InpTradeEndHour=16||15||1||17||N
 InpHardCloseHour=20||20||1||20||N
 InpHardCloseMinute=45||45||1||45||N
 
-InpMaxPreSweepKER=0.45||0.45||0.05||0.50||Y
+InpMaxPreSweepKER=0.45||0.45||0.05||0.50||N
 InpSweepMinPoints=250||200||50||300||N
 InpSweepMaxPoints=15000||15000||1000||20000||N
 InpSweepMaxBars=60||45||15||75||N
-InpBaseDisplacementATR=1.20||1.15||0.10||1.25||Y
-InpHighVolDispATR=1.45||1.40||0.10||1.50||Y
+InpBaseDisplacementATR=0.90||0.75||0.15||1.05||Y
+InpHighVolDispATR=1.40||1.35||0.05||1.45||N
 InpHighVolD1ATRPoints=45000||40000||5000||50000||N
-InpUsePDHLiquidity=true||false||0||true||Y
 
 InpSL_ATR_Mult=1.25||1.00||0.25||1.50||N
 InpMinSLPoints=3000||2500||500||3000||N
-InpPartialCloseRR=1.20||1.00||0.20||1.40||N
+InpPartialCloseRR=1.10||1.00||0.20||1.40||Y
 InpRunnerLockRR=0.50||0.30||0.20||0.70||N
-InpFinalTargetRR=3.50||3.00||0.50||3.50||N
+InpFinalTargetRR=3.50||2.80||0.35||3.50||Y
 InpTrail_ATR_Mult=1.15||1.00||0.15||1.30||N
