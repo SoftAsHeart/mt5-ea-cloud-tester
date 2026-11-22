@@ -1,0 +1,31 @@
+; saved automatically by Strategy Tester
+; My Trader 3.1 Optimization Preset (108 passes)
+
+InpRiskPercent=1.0||1.0||0.5||2.0||N
+InpMaxDailyLossPct=3.5||3.5||0.5||5.0||N
+InpMaxTradesPerDay=3||2||1||4||N
+InpMaxSpreadPoints=350||300||50||400||N
+InpMagicNumber=2026031||2026031||1||2026031||N
+
+InpAsianStartHour=0||0||1||0||N
+InpAsianEndHour=6||6||1||6||N
+InpTradeStartHour=7||7||1||8||N
+InpTradeEndHour=15||14||1||16||N
+InpMaxHoldMinutes=240||180||60||300||N
+InpHardCloseHour=20||20||1||20||N
+InpHardCloseMinute=45||45||1||45||N
+
+InpKERPeriod=14||14||2||20||N
+InpMaxKERForReversal=0.50||0.45||0.05||0.55||Y
+InpSweepMinPoints=300||250||50||350||Y
+InpMinDisplacementBody=0.55||0.55||0.05||0.65||N
+InpRequireFVG=true||false||0||true||N
+InpUseH1TrendFilter=true||false||0||true||Y
+InpH1EMAPeriod=200||200||50||200||N
+
+InpATRPeriod=14||14||2||20||N
+InpSL_ATR_Mult=0.95||0.90||0.10||1.10||Y
+InpPartialCloseRR=1.0||1.0||0.2||1.2||Y
+InpFinalTargetRR=2.2||2.0||0.2||2.4||N
+InpUseATRTrailing=true||false||0||true||N
+InpTrail_ATR_Mult=0.80||0.80||0.10||1.00||N
