@@ -1,14 +1,13 @@
-### 4. Matching `MyTrader51.set` (`108` Ultra-Focused Passes — Runs in ~90 Seconds!)
+### 2. `MQL5/Experts/MyTrader50.set` (`108` Passes — Runs in ~2 Minutes)
 
-Save **`MQL5/Experts/MyTrader51.set`**:
 ```ini
-; My Trader 5.1 Adaptive Regime Walk-Forward Preset (108 passes)
+; My Trader 5.0 Adaptive Regime Walk-Forward Preset (108 passes)
 
 InpRiskPercent=2.0||1.5||0.5||2.5||Y
 InpMaxDailyLossPct=4.0||4.0||0.5||5.0||N
 InpMaxTradesPerDay=3||2||1||4||N
 InpMaxSpreadPoints=350||300||50||400||N
-InpMagicNumber=2026051||2026051||1||2026051||N
+InpMagicNumber=2026050||2026050||1||2026050||N
 
 InpAsianStartHour=0||0||1||0||N
 InpAsianEndHour=6||6||1||6||N
