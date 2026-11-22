@@ -1,3 +1,17 @@
+name: MT5 Cloud Genetic Optimization
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-mt5-tester:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
       - name: Download MT5 Binaries & Profile from Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -8,17 +22,12 @@
           Get-ChildItem "C:\MT5" -Filter "*.zip" | ForEach-Object {
             Expand-Archive -Path $_.FullName -DestinationPath "C:\MT5" -Force
           }
-
-          # Move terminal64.exe / metatester64.exe to C:\MT5 if inside a subfolder
           Get-ChildItem "C:\MT5" -Filter "*.exe" -Recurse | Where-Object { $_.DirectoryName -ne "C:\MT5" } | ForEach-Object {
             Copy-Item $_.FullName -Destination "C:\MT5\" -Force
           }
-
-          # Move Config and Bases folders to C:\MT5 if nested inside a pack folder
           Get-ChildItem "C:\MT5" -Directory -Recurse | Where-Object { $_.Name -in @("Config", "Bases") -and $_.Parent.FullName -ne "C:\MT5" } | ForEach-Object {
             Copy-Item $_.FullName -Destination "C:\MT5\" -Recurse -Force
           }
-
           Write-Host "Root contents of C:\MT5:"
           Get-ChildItem "C:\MT5"
 
@@ -38,15 +47,8 @@
           $pass = $env:DEMO_PASS.Trim()
           $server = $env:DEMO_SERVER.Trim()
 
-          # Pre-warm Exness connection using cached accounts.dat + Bases
-          @"
-          [Common]
-          Login=$login
-          Password=$pass
-          Server=$server
-          KeepPrivate=1
-          NewsEnable=0
-          "@ | Set-Content "C:\MT5\Config\warmup.ini"
+          $warmLines = @("[Common]", "Login=$login", "Password=$pass", "Server=$server", "KeepPrivate=1", "NewsEnable=0")
+          $warmLines | Set-Content "C:\MT5\Config\warmup.ini"
 
           Write-Host "Pre-warming Exness login on server: [$server]..."
           $warm = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/config:`"C:\MT5\Config\warmup.ini`"" -PassThru
@@ -56,7 +58,6 @@
             Start-Sleep -Seconds 3
           }
 
-          # Build clean optimize.ini
           $lines = Get-Content "config\optimize.ini"
           $out = foreach ($line in $lines) {
             if ($line -match "^Login=") { "Login=$login" }
@@ -65,3 +66,24 @@
             else { $line }
           }
           $out | Set-Content "C:\MT5\Config\optimize.ini"
+
+          Write-Host "--- Verified Config (Password Masked) ---"
+          $out | Where-Object { $_ -notmatch "^Password=" } | Write-Host
+
+      - name: Run MT5 Strategy Tester (Headless 4-Core)
+        shell: powershell
+        run: |
+          Write-Host "Starting MT5 Strategy Tester..."
+          $proc = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/config:`"C:\MT5\Config\optimize.ini`"" -PassThru -Wait
+          Write-Host "MT5 exited with code: $($proc.ExitCode)"
+
+      - name: Upload Optimization Reports & Logs
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: mt5-optimization-results
+          path: |
+            C:\MT5\reports\
+            C:\MT5\Tester\logs\
+            C:\MT5\Logs\
+          if-no-files-found: warn
