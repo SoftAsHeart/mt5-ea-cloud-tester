@@ -22,16 +22,42 @@ jobs:
         id: cache-mt5
         uses: actions/cache@v4
         with:
-          path: .\MT5\terminal64.exe
-          key: mt5-terminal-base-v1
+          path: |
+            .\MT5\terminal64.exe
+            .\MT5\metatester64.exe
+            .\MT5\metaeditor64.exe
+          key: mt5-terminal-base-v2
 
       - name: Download & Install Portable MetaTrader 5
         if: steps.cache-mt5.outputs.cache-hit != 'true'
         shell: powershell
         run: |
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
           New-Item -ItemType Directory -Force -Path ".\MT5" | Out-Null
-          $installerUrl = "https://mql5.com"
-          Invoke-WebRequest -Uri $installerUrl -OutFile ".\mt5setup.exe"
+
+          $urls = @(
+            "https://mql5.com",
+            "https://mql5.com"
+          )
+
+          $downloaded = $false
+          foreach ($url in $urls) {
+            try {
+              Write-Host "Trying download from: $url"
+              Invoke-WebRequest -Uri $url -OutFile ".\mt5setup.exe" -UserAgent "Mozilla/5.0" -UseBasicParsing -TimeoutSec 60
+              if ((Test-Path ".\mt5setup.exe") -and ((Get-Item ".\mt5setup.exe").Length -gt 500000)) {
+                $downloaded = $true
+                break
+              }
+            } catch {
+              Write-Host "Failed from $url : $_"
+            }
+          }
+
+          if (-not $downloaded) {
+            throw "Could not download MT5 installer from any mirror."
+          }
+
           Start-Process -FilePath ".\mt5setup.exe" -ArgumentList "/auto /path:$((Resolve-Path '.\MT5').Path)" -Wait
           Remove-Item ".\mt5setup.exe" -Force -ErrorAction SilentlyContinue
 
@@ -48,11 +74,11 @@ jobs:
           )
           foreach ($d in $dirs) { New-Item -ItemType Directory -Force -Path $d | Out-Null }
 
-          Copy-Item -Path ".\MQL5\Experts\*.ex5" -Destination ".\MT5\MQL5\Experts\" -Force
+          Copy-Item -Path ".\MQL5\Experts\*.ex5" -Destination ".\MT5\MQL5\Experts\" -Force -ErrorAction SilentlyContinue
           Copy-Item -Path ".\MQL5\Experts\*.set" -Destination ".\MT5\MQL5\Presets\" -Force -ErrorAction SilentlyContinue
           Copy-Item -Path ".\MQL5\Experts\*.set" -Destination ".\MT5\MQL5\Experts\" -Force -ErrorAction SilentlyContinue
           Copy-Item -Path ".\MQL5\Experts\*.set" -Destination ".\MT5\MQL5\Profiles\Tester\" -Force -ErrorAction SilentlyContinue
-          Copy-Item -Path ".\config\*" -Destination ".\MT5\config\" -Recurse -Force
+          Copy-Item -Path ".\config\*" -Destination ".\MT5\config\" -Recurse -Force -ErrorAction SilentlyContinue
 
           Write-Host "=== Loaded Experts ==="
           Get-ChildItem ".\MT5\MQL5\Experts\*.ex5" | Select-Object Name, Length, LastWriteTime
@@ -89,14 +115,18 @@ jobs:
         if: always()
         shell: powershell
         run: |
-          Get-ChildItem -Path ".\MT5" -Recurse -Include "*.xml","*.htm","*.html","*.png" |
-            Where-Object { $_.FullName -match "reports" -or $_.Name -match "Report_" } |
-            Copy-Item -Destination ".\reports\" -Force
+          New-Item -ItemType Directory -Force -Path ".\reports" | Out-Null
 
-          Get-ChildItem -Path ".\MT5\Tester\logs" -Filter "*.log" -ErrorAction SilentlyContinue |
-            Copy-Item -Destination ".\reports\" -Force
+          if (Test-Path ".\MT5") {
+            Get-ChildItem -Path ".\MT5" -Recurse -Include "*.xml","*.htm","*.html","*.png" -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -match "reports" -or $_.Name -match "Report_" } |
+              Copy-Item -Destination ".\reports\" -Force -ErrorAction SilentlyContinue
 
-          $files = Get-ChildItem -Path ".\reports\"
+            Get-ChildItem -Path ".\MT5\Tester\logs" -Filter "*.log" -ErrorAction SilentlyContinue |
+              Copy-Item -Destination ".\reports\" -Force -ErrorAction SilentlyContinue
+          }
+
+          $files = @(Get-ChildItem -Path ".\reports\" -ErrorAction SilentlyContinue)
           "## MT5 Walk-Forward Optimization Artifacts" >> $env:GITHUB_STEP_SUMMARY
           if ($files.Count -gt 0) {
             "| File Name | Size (KB) |" >> $env:GITHUB_STEP_SUMMARY
