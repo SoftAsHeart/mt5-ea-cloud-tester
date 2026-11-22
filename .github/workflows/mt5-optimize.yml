@@ -43,14 +43,17 @@ jobs:
           New-Item -ItemType Directory -Force -Path "C:\MT5\Config"
           New-Item -ItemType Directory -Force -Path "C:\MT5\reports"
 
-          Copy-Item "MQL5\Experts\*.ex5" -Destination "C:\MT5\MQL5\Experts\" -Force
-          if (Test-Path "MQL5\Experts\*.set") {
-            Get-ChildItem "MQL5\Experts\*.set" | ForEach-Object {
-              Get-Content $_.FullName | Set-Content -Path "C:\MT5\MQL5\Profiles\Tester\$($_.Name)" -Encoding Unicode
-            }
-            Write-Host "Copied .set files to Tester profile:"
-            Get-ChildItem "C:\MT5\MQL5\Profiles\Tester\"
+          # Recursively find all .ex5 files anywhere in the repo and copy to MT5 Experts
+          Get-ChildItem -Path "." -Recurse -Filter "*.ex5" | Copy-Item -Destination "C:\MT5\MQL5\Experts\" -Force
+          Write-Host "EX5 files copied to C:\MT5\MQL5\Experts:"
+          Get-ChildItem "C:\MT5\MQL5\Experts\*.ex5"
+
+          # Recursively find all .set files anywhere in the repo and convert to UTF-16 LE in Tester profile
+          Get-ChildItem -Path "." -Recurse -Filter "*.set" | ForEach-Object {
+            Get-Content $_.FullName | Set-Content -Path "C:\MT5\MQL5\Profiles\Tester\$($_.Name)" -Encoding Unicode
           }
+          Write-Host "SET files copied to C:\MT5\MQL5\Profiles\Tester:"
+          Get-ChildItem "C:\MT5\MQL5\Profiles\Tester\*.set"
 
           $login = $env:DEMO_LOGIN.Trim()
           $pass = $env:DEMO_PASS.Trim()
@@ -60,7 +63,7 @@ jobs:
           $warmLines | Set-Content "C:\MT5\Config\warmup.ini"
 
           Write-Host "Pre-warming Exness login on server: [$server]..."
-          $warm = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/config:`"C:\MT5\Config\warmup.ini`"" -PassThru
+          $warm = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\warmup.ini`"" -PassThru
           Start-Sleep -Seconds 25
           if (-not $warm.HasExited) {
             Stop-Process -Id $warm.Id -Force
@@ -83,7 +86,7 @@ jobs:
         shell: powershell
         run: |
           Write-Host "Starting MT5 Strategy Tester..."
-          $proc = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/config:`"C:\MT5\Config\optimize.ini`"" -PassThru -Wait
+          $proc = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\optimize.ini`"" -PassThru -Wait
           Write-Host "MT5 exited with code: $($proc.ExitCode)"
 
           Get-ChildItem "C:\MT5" -Filter "Report*.xml" -ErrorAction SilentlyContinue | Copy-Item -Destination "C:\MT5\reports\" -Force
