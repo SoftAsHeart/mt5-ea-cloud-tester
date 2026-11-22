@@ -1,44 +1,38 @@
-### 3. Walk-Forward Optimization Preset: `GoldTitanHybrid.set` (`216` Passes)
+; GoldTitanHybrid Walk-Forward Champion (Pass 309)
+InpRiskPercent=0.75
+InpMaxDailyLossPct=3.0
+InpMaxTotalTradesPerDay=12
+InpMaxSpreadPoints=350
+InpMagicNumber=2026777
 
-Save as **`MQL5/Experts/GoldTitanHybrid.set`** (`3 × 3 × 2 × 2 × 3 × 2 = 216` passes—runs on **M5** in ~2.5 minutes):
+InpAsiaStartHour=0
+InpAsiaEndHour=6
+InpTradeStartHour=7
+InpTradeEndHour=18
+InpHardCloseHour=20
+InpHardCloseMinute=45
+InpMaxHoldMinutes=180
 
-```ini
-; GoldTitanHybrid Walk-Forward Optimization Preset (216 passes)
+InpEnableTrendFVG=true
+InpTrendEMAPeriod=50
+InpMinTrendADX=20.0
+InpMinFVGPoints=180
+InpFVGExpiryBars=10
+InpMinRejectionWick=0.35
+InpMaxTrendPyramid=1
+InpTrendTargetRR=2.40
+InpTrendTrailATR=0.90
 
-InpRiskPercent=0.75||0.75||0.25||1.0||N
-InpMaxDailyLossPct=3.0||3.0||0.5||5.0||N
-InpMaxTotalTradesPerDay=12||10||2||16||N
-InpMaxSpreadPoints=350||300||50||400||N
-InpMagicNumber=2026777||2026777||1||2026777||N
+InpEnableVwapSweep=true
+InpMaxFadeADX=36.0
+InpMinVwapSigma=1.50
+InpSwingLookback=36
+InpMinSweepPoints=80
+InpMaxSweepPoints=2500
+InpRSIOverbought=75.0
+InpRSIOversold=25.0
+InpMinSweepRR=1.25
 
-InpAsiaStartHour=0||0||1||0||N
-InpAsiaEndHour=6||6||1||6||N
-InpTradeStartHour=7||7||1||8||N
-InpTradeEndHour=18||17||1||19||N
-InpHardCloseHour=20||20||1||20||N
-InpHardCloseMinute=45||45||1||45||N
-InpMaxHoldMinutes=180||120||60||240||N
-
-InpEnableTrendFVG=true||false||0||true||N
-InpTrendEMAPeriod=50||50||10||60||N
-InpMinTrendADX=23.0||20.0||3.0||26.0||Y
-InpMinFVGPoints=180||150||50||250||N
-InpFVGExpiryBars=10||8||4||16||N
-InpMinRejectionWick=0.30||0.25||0.10||0.45||Y
-InpMaxTrendPyramid=2||1||1||2||Y
-InpTrendTargetRR=2.40||2.00||0.40||2.80||N
-InpTrendTrailATR=0.90||0.80||0.20||1.00||N
-
-InpEnableVwapSweep=true||false||0||true||N
-InpMaxFadeADX=36.0||32.0||4.0||40.0||N
-InpMinVwapSigma=1.45||1.25||0.25||1.75||Y
-InpSwingLookback=36||24||12||48||N
-InpMinSweepPoints=80||80||40||120||N
-InpMaxSweepPoints=2500||2000||500||3000||N
-InpRSIOverbought=68.0||65.0||5.0||75.0||Y
-InpRSIOversold=32.0||25.0||5.0||35.0||N
-InpMinSweepRR=1.25||1.10||0.15||1.40||N
-
-InpMinVolumeSpike=1.10||1.00||0.15||1.30||Y
-InpSL_ATR_Mult=0.55||0.45||0.15||0.75||N
-InpMinSLPoints=1800||1500||500||2500||N
+InpMinVolumeSpike=1.15
+InpSL_ATR_Mult=0.55
+InpMinSLPoints=1800
