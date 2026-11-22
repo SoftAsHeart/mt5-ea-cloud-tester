@@ -1,0 +1,39 @@
+### 4. Matching `MyTrader40.set` (`216` Focused Passes)
+
+Save this at **`MQL5/Experts/MyTrader40.set`** (`3 × 3 × 2 × 3 × 2 × 2 = 216` passes—tests Pre-Sweep KER, Sweep Expiry, Structural SL Floor, H1 RSI Exhaustion, and Target R:R):
+
+```ini
+; My Trader 4.0 Walk-Forward Optimization Preset (216 passes)
+
+InpRiskPercent=1.0||1.0||0.5||2.0||N
+InpMaxDailyLossPct=3.0||3.0||0.5||5.0||N
+InpMaxTradesPerDay=2||2||1||3||N
+InpMaxSpreadPoints=350||300||50||400||N
+InpMagicNumber=2026040||2026040||1||2026040||N
+
+InpAsianStartHour=0||0||1||0||N
+InpAsianEndHour=6||6||1||6||N
+InpTradeStartHour=7||7||1||8||N
+InpTradeEndHour=14||13||1||15||N
+InpMaxHoldMinutes=300||240||60||360||N
+InpHardCloseHour=20||20||1||20||N
+InpHardCloseMinute=45||45||1||45||N
+
+InpKERPeriod=14||14||2||20||N
+InpMaxPreSweepKER=0.50||0.45||0.05||0.55||Y
+InpSweepMinPoints=300||300||100||400||N
+InpSweepMaxPoints=12000||12000||1000||15000||N
+InpSweepMaxBars=45||30||30||90||Y
+InpMinDisplacementBody=0.50||0.50||0.05||0.60||N
+InpRequireFVG=true||false||0||true||N
+InpUseH1RegimeFilter=true||false||0||true||Y
+InpH1EMAPeriod=200||200||50||200||N
+InpH1RSIExhaustion=62.0||60.0||4.0||68.0||Y
+
+InpATRPeriod=14||14||2||20||N
+InpSL_ATR_Mult=1.20||1.00||0.20||1.40||N
+InpMinSLPoints=2500||2000||1000||3000||Y
+InpPartialCloseRR=1.0||1.0||0.2||1.2||N
+InpFinalTargetRR=2.4||2.2||0.4||2.6||Y
+InpUseATRTrailing=true||false||0||true||N
+InpTrail_ATR_Mult=1.00||0.80||0.20||1.20||N
