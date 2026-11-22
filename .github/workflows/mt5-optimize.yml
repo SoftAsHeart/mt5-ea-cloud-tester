@@ -31,7 +31,7 @@ jobs:
           Write-Host "Root contents of C:\MT5:"
           Get-ChildItem "C:\MT5"
 
-      - name: Prepare Config & Inject Exness Demo Secrets
+      - name: Prepare Config & Inject Exness Secrets
         env:
           DEMO_LOGIN: ${{ secrets.EXNESS_DEMO_LOGIN }}
           DEMO_PASS: ${{ secrets.EXNESS_DEMO_PASS }}
@@ -39,9 +39,18 @@ jobs:
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Experts"
+          New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Profiles\Tester"
           New-Item -ItemType Directory -Force -Path "C:\MT5\Config"
           New-Item -ItemType Directory -Force -Path "C:\MT5\reports"
+
           Copy-Item "MQL5\Experts\*.ex5" -Destination "C:\MT5\MQL5\Experts\" -Force
+          if (Test-Path "MQL5\Experts\*.set") {
+            Get-ChildItem "MQL5\Experts\*.set" | ForEach-Object {
+              Get-Content $_.FullName | Set-Content -Path "C:\MT5\MQL5\Profiles\Tester\$($_.Name)" -Encoding Unicode
+            }
+            Write-Host "Copied .set files to Tester profile:"
+            Get-ChildItem "C:\MT5\MQL5\Profiles\Tester\"
+          }
 
           $login = $env:DEMO_LOGIN.Trim()
           $pass = $env:DEMO_PASS.Trim()
@@ -76,6 +85,10 @@ jobs:
           Write-Host "Starting MT5 Strategy Tester..."
           $proc = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/config:`"C:\MT5\Config\optimize.ini`"" -PassThru -Wait
           Write-Host "MT5 exited with code: $($proc.ExitCode)"
+
+          Get-ChildItem "C:\MT5" -Filter "Report*.xml" -ErrorAction SilentlyContinue | Copy-Item -Destination "C:\MT5\reports\" -Force
+          Write-Host "Reports collected in C:\MT5\reports:"
+          Get-ChildItem "C:\MT5\reports\"
 
       - name: Upload Optimization Reports & Logs
         if: always()
