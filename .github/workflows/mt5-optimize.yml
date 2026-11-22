@@ -1,105 +1,119 @@
-name: MT5 Cloud Genetic Optimization
+name: MT5 Dual-EA Walk-Forward Optimization
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'MQL5/Experts/**'
+      - 'config/**'
+      - '.github/workflows/mt5-optimize.yml'
 
 jobs:
-  run-mt5-tester:
+  optimize-backtest:
     runs-on: windows-latest
-    timeout-minutes: 360
+    timeout-minutes: 35
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v5
 
-      - name: Download MT5 Binaries & Profile from Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Cache Base MetaTrader 5 Installation
+        id: cache-mt5
+        uses: actions/cache@v4
+        with:
+          path: .\MT5\terminal64.exe
+          key: mt5-terminal-base-v1
+
+      - name: Download & Install Portable MetaTrader 5
+        if: steps.cache-mt5.outputs.cache-hit != 'true'
         shell: powershell
         run: |
-          New-Item -ItemType Directory -Force -Path "C:\MT5"
-          gh release download mt5-binaries --dir "C:\MT5"
-          Get-ChildItem "C:\MT5" -Filter "*.zip" | ForEach-Object {
-            Expand-Archive -Path $_.FullName -DestinationPath "C:\MT5" -Force
-          }
-          Get-ChildItem "C:\MT5" -Filter "*.exe" -Recurse | Where-Object { $_.DirectoryName -ne "C:\MT5" } | ForEach-Object {
-            Copy-Item $_.FullName -Destination "C:\MT5\" -Force
-          }
-          Get-ChildItem "C:\MT5" -Directory -Recurse | Where-Object { $_.Name -in @("Config", "Bases") -and $_.Parent.FullName -ne "C:\MT5" } | ForEach-Object {
-            Copy-Item $_.FullName -Destination "C:\MT5\" -Recurse -Force
-          }
-          Write-Host "Root contents of C:\MT5:"
-          Get-ChildItem "C:\MT5"
+          New-Item -ItemType Directory -Force -Path ".\MT5" | Out-Null
+          $installerUrl = "https://mql5.com"
+          Invoke-WebRequest -Uri $installerUrl -OutFile ".\mt5setup.exe"
+          Start-Process -FilePath ".\mt5setup.exe" -ArgumentList "/auto /path:$((Resolve-Path '.\MT5').Path)" -Wait
+          Remove-Item ".\mt5setup.exe" -Force -ErrorAction SilentlyContinue
 
-      - name: Prepare Config & Inject Exness Secrets
-        env:
-          DEMO_LOGIN: ${{ secrets.EXNESS_DEMO_LOGIN }}
-          DEMO_PASS: ${{ secrets.EXNESS_DEMO_PASS }}
-          DEMO_SERVER: ${{ secrets.EXNESS_DEMO_SERVER }}
+      - name: Prepare Portable Directories & Copy Repo Files
         shell: powershell
         run: |
-          New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Experts"
-          New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Profiles\Tester"
-          New-Item -ItemType Directory -Force -Path "C:\MT5\Config"
-          New-Item -ItemType Directory -Force -Path "C:\MT5\reports"
+          $dirs = @(
+            ".\MT5\MQL5\Experts",
+            ".\MT5\MQL5\Presets",
+            ".\MT5\MQL5\Profiles\Tester",
+            ".\MT5\config",
+            ".\MT5\reports",
+            ".\reports"
+          )
+          foreach ($d in $dirs) { New-Item -ItemType Directory -Force -Path $d | Out-Null }
 
-          # Recursively find all .ex5 files anywhere in the repo and copy to MT5 Experts
-          Get-ChildItem -Path "." -Recurse -Filter "*.ex5" | Copy-Item -Destination "C:\MT5\MQL5\Experts\" -Force
-          Write-Host "EX5 files copied to C:\MT5\MQL5\Experts:"
-          Get-ChildItem "C:\MT5\MQL5\Experts\*.ex5"
+          Copy-Item -Path ".\MQL5\Experts\*.ex5" -Destination ".\MT5\MQL5\Experts\" -Force
+          Copy-Item -Path ".\MQL5\Experts\*.set" -Destination ".\MT5\MQL5\Presets\" -Force -ErrorAction SilentlyContinue
+          Copy-Item -Path ".\MQL5\Experts\*.set" -Destination ".\MT5\MQL5\Experts\" -Force -ErrorAction SilentlyContinue
+          Copy-Item -Path ".\MQL5\Experts\*.set" -Destination ".\MT5\MQL5\Profiles\Tester\" -Force -ErrorAction SilentlyContinue
+          Copy-Item -Path ".\config\*" -Destination ".\MT5\config\" -Recurse -Force
 
-          # Recursively find all .set files anywhere in the repo and convert to UTF-16 LE in Tester profile
-          Get-ChildItem -Path "." -Recurse -Filter "*.set" | ForEach-Object {
-            Get-Content $_.FullName | Set-Content -Path "C:\MT5\MQL5\Profiles\Tester\$($_.Name)" -Encoding Unicode
-          }
-          Write-Host "SET files copied to C:\MT5\MQL5\Profiles\Tester:"
-          Get-ChildItem "C:\MT5\MQL5\Profiles\Tester\*.set"
+          Write-Host "=== Loaded Experts ==="
+          Get-ChildItem ".\MT5\MQL5\Experts\*.ex5" | Select-Object Name, Length, LastWriteTime
 
-          $login = $env:DEMO_LOGIN.Trim()
-          $pass = $env:DEMO_PASS.Trim()
-          $server = $env:DEMO_SERVER.Trim()
-
-          $warmLines = @("[Common]", "Login=$login", "Password=$pass", "Server=$server", "KeepPrivate=1", "NewsEnable=0")
-          $warmLines | Set-Content "C:\MT5\Config\warmup.ini"
-
-          Write-Host "Pre-warming Exness login on server: [$server]..."
-          $warm = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\warmup.ini`"" -PassThru
-          Start-Sleep -Seconds 25
-          if (-not $warm.HasExited) {
-            Stop-Process -Id $warm.Id -Force
-            Start-Sleep -Seconds 3
-          }
-
-          $lines = Get-Content "config\optimize.ini"
-          $out = foreach ($line in $lines) {
-            if ($line -match "^Login=") { "Login=$login" }
-            elseif ($line -match "^Password=") { "Password=$pass" }
-            elseif ($line -match "^Server=") { "Server=$server" }
-            else { $line }
-          }
-          $out | Set-Content "C:\MT5\Config\optimize.ini"
-
-          Write-Host "--- Verified Config (Password Masked) ---"
-          $out | Where-Object { $_ -notmatch "^Password=" } | Write-Host
-
-      - name: Run MT5 Strategy Tester (Headless 4-Core)
+      - name: Run Walk-Forward Optimization 1 (mytrader50)
         shell: powershell
         run: |
-          Write-Host "Starting MT5 Strategy Tester..."
-          $proc = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\optimize.ini`"" -PassThru -Wait
-          Write-Host "MT5 exited with code: $($proc.ExitCode)"
+          if (Test-Path ".\MT5\config\optimize.ini") {
+            Write-Host "Starting mytrader50 optimization..."
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
+            Start-Process -FilePath ".\MT5\terminal64.exe" -ArgumentList "/portable /config:config\optimize.ini" -WorkingDirectory ".\MT5" -Wait
+            $sw.Stop()
+            Write-Host "mytrader50 finished in $($sw.Elapsed.ToString('mm\:ss'))"
+            Get-Process -Name "metatester64" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          } else {
+            Write-Host "config\optimize.ini not found, skipping mytrader50."
+          }
 
-          Get-ChildItem "C:\MT5" -Filter "Report*.xml" -ErrorAction SilentlyContinue | Copy-Item -Destination "C:\MT5\reports\" -Force
-          Write-Host "Reports collected in C:\MT5\reports:"
-          Get-ChildItem "C:\MT5\reports\"
+      - name: Run Walk-Forward Optimization 2 (GoldTitanHybrid)
+        shell: powershell
+        run: |
+          if (Test-Path ".\MT5\config\optimize_titan.ini") {
+            Write-Host "Starting GoldTitanHybrid optimization..."
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
+            Start-Process -FilePath ".\MT5\terminal64.exe" -ArgumentList "/portable /config:config\optimize_titan.ini" -WorkingDirectory ".\MT5" -Wait
+            $sw.Stop()
+            Write-Host "GoldTitanHybrid finished in $($sw.Elapsed.ToString('mm\:ss'))"
+            Get-Process -Name "metatester64" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          } else {
+            Write-Host "config\optimize_titan.ini not found, skipping GoldTitanHybrid."
+          }
 
-      - name: Upload Optimization Reports & Logs
+      - name: Collect All Generated Reports & Tester Logs
+        if: always()
+        shell: powershell
+        run: |
+          Get-ChildItem -Path ".\MT5" -Recurse -Include "*.xml","*.htm","*.html","*.png" |
+            Where-Object { $_.FullName -match "reports" -or $_.Name -match "Report_" } |
+            Copy-Item -Destination ".\reports\" -Force
+
+          Get-ChildItem -Path ".\MT5\Tester\logs" -Filter "*.log" -ErrorAction SilentlyContinue |
+            Copy-Item -Destination ".\reports\" -Force
+
+          $files = Get-ChildItem -Path ".\reports\"
+          "## MT5 Walk-Forward Optimization Artifacts" >> $env:GITHUB_STEP_SUMMARY
+          if ($files.Count -gt 0) {
+            "| File Name | Size (KB) |" >> $env:GITHUB_STEP_SUMMARY
+            "| :--- | :--- |" >> $env:GITHUB_STEP_SUMMARY
+            foreach ($f in $files) {
+              $kb = [math]::Round($f.Length / 1KB, 1)
+              "| $($f.Name) | $kb KB |" >> $env:GITHUB_STEP_SUMMARY
+            }
+          } else {
+            "⚠️ No report files were generated. Check Tester logs for details." >> $env:GITHUB_STEP_SUMMARY
+          }
+
+      - name: Upload Optimization Reports Artifact
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: mt5-optimization-results
-          path: |
-            C:\MT5\reports\
-            C:\MT5\Tester\logs\
-            C:\MT5\Logs\
-          if-no-files-found: warn
+          name: MT5-WalkForward-Reports-${{ github.run_number }}
+          path: .\reports\
+          retention-days: 30
+          compression-level: 6
