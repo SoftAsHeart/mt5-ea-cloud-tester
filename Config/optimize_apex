@@ -1,0 +1,30 @@
+### 4. High-Compute Walk-Forward Config & `.set` Grid (For Your 96-Core Runner)
+
+#### A. `config/optimize_apex.ini`
+```ini
+[Common]
+Login=0
+Password=0
+Server=Exness-MT5Real50
+KeepPrivate=1
+NewsEnable=0
+
+[Tester]
+Expert=GoldApexInstitutional.ex5
+ExpertParameters=GoldApexInstitutional.set
+Symbol=XAUUSDc
+Period=M15
+Model=1
+ExecutionMode=0
+Optimization=2
+OptimizationCriterion=6
+FromDate=2025.11.01
+ToDate=2026.11.20
+ForwardMode=3
+Deposit=5000
+Currency=USC
+Leverage=1:2000
+Visual=0
+Report=reports\Report_GoldApex_WF
+ReplaceReport=1
+ShutdownTerminal=1
