@@ -1,30 +1,43 @@
-; My Trader 5.0 Pass #58 Locked Winner (Real-Tick Verification)
+ini
+; My Trader 5.04 Final Walk-Forward Optimization (24 passes - 14 Months)
 
 InpRiskPercent=1.5||1.5||0.5||2.0||N
-InpMaxDailyLossPct=3.5||3.5||0.5||4.5||N
-InpMaxTradesPerDay=2||2||1||3||N
+InpMaxDailyLossPct=3.0||3.0||0.5||4.0||N
+InpBaseMaxTradesPerDay=1||1||1||2||N
+InpEnableUnlimitedMode=true||false||0||true||N
+InpPerfLookbackTrades=10||10||5||15||N
+InpMinWinRateToUnlock=60.0||50.0||10.0||60.0||Y
+InpMinPFToUnlock=1.35||1.35||0.15||1.50||N
+InpCooldownMinutes=20||20||10||30||N
 InpMaxSpreadPoints=350||300||50||400||N
 InpMagicNumber=2026050||2026050||1||2026050||N
 
 InpAsianStartHour=0||0||1||0||N
 InpAsianEndHour=6||6||1||6||N
-InpMinAsianRangePts=3500||2500||1000||4500||N
+InpMinAsianRangePts=3500||3500||500||3500||N
 InpTradeStartHour=7||7||1||8||N
-InpTradeEndHour=16||15||1||17||N
+InpTradeEndHour=14||14||1||16||N
 InpHardCloseHour=20||20||1||20||N
 InpHardCloseMinute=45||45||1||45||N
 
+InpEnableIntradayPools=true||false||0||true||N
+InpSwingLookbackM15=12||12||4||16||N
+InpHTF_FastEMA=21||21||7||28||N
+InpHTF_SlowEMA=50||50||10||60||N
 InpMaxPreSweepKER=0.45||0.45||0.05||0.50||N
 InpSweepMinPoints=250||200||50||300||N
 InpSweepMaxPoints=15000||15000||1000||20000||N
-InpSweepMaxBars=60||45||15||75||N
-InpBaseDisplacementATR=0.90||0.75||0.15||1.05||N
+InpSweepMaxBars=45||45||15||60||N
+InpBaseDisplacementATR=0.90||0.80||0.10||1.00||N
 InpHighVolDispATR=1.40||1.35||0.05||1.45||N
 InpHighVolD1ATRPoints=45000||40000||5000||50000||N
+InpMinBodyRatio=0.60||0.55||0.05||0.65||N
+InpMinFVG_ATR_Mult=0.20||0.15||0.05||0.25||N
 
 InpSL_ATR_Mult=1.25||1.00||0.25||1.50||N
 InpMinSLPoints=3000||2500||500||3000||N
-InpPartialCloseRR=1.00||1.00||0.20||1.40||N
-InpRunnerLockRR=0.50||0.30||0.20||0.70||N
-InpFinalTargetRR=3.50||2.80||0.35||3.50||N
-InpTrail_ATR_Mult=1.15||1.00||0.15||1.30||N
+InpBreakevenRR=0.75||0.60||0.15||0.90||Y
+InpPartialCloseRR=0.90||0.90||0.20||1.10||Y
+InpRunnerLockRR=0.40||0.40||0.10||0.50||N
+InpFinalTargetRR=3.00||3.00||0.50||3.50||N
+InpTrail_M5_ATR_Mult=1.35||1.35||0.30||1.65||Y
