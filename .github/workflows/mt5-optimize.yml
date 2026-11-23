@@ -86,11 +86,11 @@ jobs:
             $out | Where-Object { $_ -notmatch "^Password=" } | Write-Host
           }
 
-      - name: Run MT5 Strategy Tester - Test 1 (mytrader50)
+      - name: Run MT5 Strategy Tester - Test 1 (mytrader60)
         shell: powershell
         run: |
           if (Test-Path "C:\MT5\Config\optimize.ini") {
-            Write-Host "Starting MT5 Strategy Tester for optimize.ini (mytrader50)..."
+            Write-Host "Starting MT5 Strategy Tester for optimize.ini (mytrader60)..."
             $proc1 = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\optimize.ini`"" -PassThru -Wait
             Write-Host "Test 1 exited with code: $($proc1.ExitCode)"
             Get-Process -Name "metatester64" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -99,11 +99,11 @@ jobs:
             Write-Host "C:\MT5\Config\optimize.ini not found, skipping Test 1."
           }
 
-      - name: Run MT5 Strategy Tester - Test 2 (GoldTitanHybrid)
+      - name: Run MT5 Strategy Tester - Test 2 (GoldApexInstitutional)
         shell: powershell
         run: |
           if (Test-Path "C:\MT5\Config\optimize_titan.ini") {
-            Write-Host "Starting MT5 Strategy Tester for optimize_titan.ini (GoldTitanHybrid)..."
+            Write-Host "Starting MT5 Strategy Tester for optimize_titan.ini (GoldApexInstitutional)..."
             $proc2 = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\optimize_titan.ini`"" -PassThru -Wait
             Write-Host "Test 2 exited with code: $($proc2.ExitCode)"
             Get-Process -Name "metatester64" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
