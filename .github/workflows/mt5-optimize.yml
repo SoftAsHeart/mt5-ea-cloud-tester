@@ -70,7 +70,7 @@ jobs:
             Start-Sleep -Seconds 3
           }
 
-          # Inject Exness credentials into every .ini config file in config\ (optimize.ini, optimize_titan.ini, etc.)
+          # Inject Exness credentials into every .ini config file in config\ (optimize.ini, optimize_apex.ini, etc.)
           Get-ChildItem -Path "config" -Filter "*.ini" | ForEach-Object {
             $iniName = $_.Name
             $lines = Get-Content $_.FullName
@@ -102,13 +102,13 @@ jobs:
       - name: Run MT5 Strategy Tester - Test 2 (GoldApexInstitutional)
         shell: powershell
         run: |
-          if (Test-Path "C:\MT5\Config\optimize_titan.ini") {
-            Write-Host "Starting MT5 Strategy Tester for optimize_titan.ini (GoldApexInstitutional)..."
-            $proc2 = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\optimize_titan.ini`"" -PassThru -Wait
+          if (Test-Path "C:\MT5\Config\optimize_apex.ini") {
+            Write-Host "Starting MT5 Strategy Tester for optimize_apex.ini (GoldApexInstitutional)..."
+            $proc2 = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\optimize_apex.ini`"" -PassThru -Wait
             Write-Host "Test 2 exited with code: $($proc2.ExitCode)"
             Get-Process -Name "metatester64" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
           } else {
-            Write-Host "C:\MT5\Config\optimize_titan.ini not found, skipping Test 2."
+            Write-Host "C:\MT5\Config\optimize_apex.ini not found, skipping Test 2."
           }
 
           Get-ChildItem "C:\MT5" -Filter "Report*.xml" -ErrorAction SilentlyContinue | Copy-Item -Destination "C:\MT5\reports\" -Force
