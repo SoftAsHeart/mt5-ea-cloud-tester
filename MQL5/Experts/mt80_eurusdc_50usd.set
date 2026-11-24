@@ -1,19 +1,19 @@
-; MyTrader80_ScalpHedge - Exness Standard Cent ($50 / 5000 USC) EURUSDc M5 Preset
-InpBaseLotSize=0.02
+; MyTrader80_ScalpHedge - Best Cluster from Run 1 (Pass 93/157) - EURUSDc M5
+InpBaseLotSize=0.01
 InpMaxBasketLossPct=3.00
 InpMaxDailyLossPct=5.00
 InpMaxSpreadPoints=18
 InpMagicNumber=2026080
 InpEMA_TrendPeriod=50
-InpRSI_Period=7
+InpRSI_Period=10
 InpRSI_Oversold=28.0
 InpRSI_Overbought=72.0
-InpScalpTP_ATR_Mult=1.15
+InpScalpTP_ATR_Mult=1.35
 InpCooldownSeconds=180
 InpEnableSingleHedge=true
-InpHedgeTrigger_ATR=1.60
+InpHedgeTrigger_ATR=1.90
 InpHedgeLotMultiplier=1.50
-InpBasketTarget_ATR=0.45
+InpBasketTarget_ATR=0.60
 InpTradeStartHour=7
 InpTradeEndHour=18
 InpHardCloseHour=20
