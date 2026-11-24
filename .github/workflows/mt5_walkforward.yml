@@ -1,4 +1,4 @@
-name: MT5 Cloud Genetic Optimization (MyTrader80 EURUSDc)
+name: MT5 Quantum DSP Multi-Pair Walk-Forward (v9.00)
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Download MT5 Binaries & Profile from Release
         env:
@@ -28,10 +28,8 @@ jobs:
           Get-ChildItem "C:\MT5" -Directory -Recurse | Where-Object { $_.Name -in @("Config", "Bases") -and $_.Parent.FullName -ne "C:\MT5" } | ForEach-Object {
             Copy-Item $_.FullName -Destination "C:\MT5\" -Recurse -Force
           }
-          Write-Host "Root contents of C:\MT5:"
-          Get-ChildItem "C:\MT5"
 
-      - name: Compile EA, Prepare Config & Inject Exness Secrets
+      - name: Compile EA, Warmup Exness & Generate Multi-Pair Configs
         env:
           DEMO_LOGIN: ${{ secrets.EXNESS_DEMO_LOGIN }}
           DEMO_PASS: ${{ secrets.EXNESS_DEMO_PASS }}
@@ -39,91 +37,62 @@ jobs:
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Experts"
-          New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Profiles\Tester"
           New-Item -ItemType Directory -Force -Path "C:\MT5\Config"
           New-Item -ItemType Directory -Force -Path "C:\MT5\reports"
 
-          # Copy any .mq5 source files and compile with MetaEditor
-          Get-ChildItem -Path "." -Recurse -Filter "*.mq5" | ForEach-Object {
-            Copy-Item $_.FullName -Destination "C:\MT5\MQL5\Experts\" -Force
-            if (Test-Path "C:\MT5\metaeditor64.exe") {
-              Write-Host "Compiling $($_.Name)..."
-              & "C:\MT5\metaeditor64.exe" /compile:"C:\MT5\MQL5\Experts\$($_.Name)" /log:"C:\MT5\reports\compile_$($_.BaseName).log"
-              Start-Sleep -Seconds 3
-              if (Test-Path "C:\MT5\reports\compile_$($_.BaseName).log") {
-                Get-Content "C:\MT5\reports\compile_$($_.BaseName).log"
-              }
-            }
+          Get-ChildItem -Path "." -Recurse -Filter "MyTrader90_QuantumDSP.*" | Copy-Item -Destination "C:\MT5\MQL5\Experts\" -Force
+          if ((Test-Path "C:\MT5\metaeditor64.exe") -and (Test-Path "C:\MT5\MQL5\Experts\MyTrader90_QuantumDSP.mq5")) {
+            & "C:\MT5\metaeditor64.exe" /compile:"C:\MT5\MQL5\Experts\MyTrader90_QuantumDSP.mq5" /log:"C:\MT5\reports\compile_v90.log"
+            Start-Sleep -Seconds 3
+            Get-Content "C:\MT5\reports\compile_v90.log"
+          }
+          if (-not (Test-Path "C:\MT5\MQL5\Experts\MyTrader90_QuantumDSP.ex5")) {
+            throw "MyTrader90_QuantumDSP.ex5 missing or compilation failed!"
           }
 
-          # Also copy any pre-compiled .ex5 files anywhere in the repo
-          Get-ChildItem -Path "." -Recurse -Filter "*.ex5" | Copy-Item -Destination "C:\MT5\MQL5\Experts\" -Force
-          Write-Host "EX5 files ready in C:\MT5\MQL5\Experts:"
-          Get-ChildItem "C:\MT5\MQL5\Experts\*.ex5"
-
-          # Convert all .set files to UTF-16 LE in Tester profile
-          Get-ChildItem -Path "." -Recurse -Filter "*.set" | ForEach-Object {
-            Get-Content $_.FullName | Set-Content -Path "C:\MT5\MQL5\Profiles\Tester\$($_.Name)" -Encoding Unicode
-          }
-          Write-Host "SET files copied to C:\MT5\MQL5\Profiles\Tester:"
-          Get-ChildItem "C:\MT5\MQL5\Profiles\Tester\*.set"
-
-          $login = $env:DEMO_LOGIN.Trim()
-          $pass = $env:DEMO_PASS.Trim()
+          $login  = $env:DEMO_LOGIN.Trim()
+          $pass   = $env:DEMO_PASS.Trim()
           $server = $env:DEMO_SERVER.Trim()
 
-          $warmLines = @("[Common]", "Login=$login", "Password=$pass", "Server=$server", "KeepPrivate=1", "NewsEnable=0")
-          $warmLines | Set-Content "C:\MT5\Config\warmup.ini"
-
-          Write-Host "Pre-warming Exness login on server: [$server]..."
+          @("[Common]", "Login=$login", "Password=$pass", "Server=$server", "KeepPrivate=1", "NewsEnable=0") | Set-Content "C:\MT5\Config\warmup.ini"
           $warm = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\warmup.ini`"" -PassThru
           Start-Sleep -Seconds 25
-          if (-not $warm.HasExited) {
-            Stop-Process -Id $warm.Id -Force
-            Start-Sleep -Seconds 3
-          }
+          if (-not $warm.HasExited) { Stop-Process -Id $warm.Id -Force; Start-Sleep -Seconds 3 }
 
-          # Inject Exness credentials into every .ini config file in config\
-          Get-ChildItem -Path "config" -Filter "*.ini" | ForEach-Object {
-            $iniName = $_.Name
-            $lines = Get-Content $_.FullName
-            $out = foreach ($line in $lines) {
+          $baseIni = Get-Content "config\optimize.ini"
+          $pairs = @("EURUSDc", "USDJPYc", "AUDUSDc")
+          foreach ($sym in $pairs) {
+            $out = foreach ($line in $baseIni) {
               if ($line -match "^Login=") { "Login=$login" }
               elseif ($line -match "^Password=") { "Password=$pass" }
               elseif ($line -match "^Server=") { "Server=$server" }
+              elseif ($line -match "^Symbol=") { "Symbol=$sym" }
+              elseif ($line -match "^Report=") { "Report=reports\opt_v90_$sym.htm" }
               else { $line }
             }
-            $out | Set-Content "C:\MT5\Config\$iniName"
-
-            Write-Host "--- Verified Config: $iniName (Password Masked) ---"
-            $out | Where-Object { $_ -notmatch "^Password=" } | Write-Host
+            $out | Set-Content "C:\MT5\Config\opt_$sym.ini"
           }
 
-      - name: Run MT5 Strategy Tester (MyTrader80 EURUSDc)
+      - name: Run Multi-Pair Walk-Forward Optimizations (EURUSDc, USDJPYc, AUDUSDc)
         shell: powershell
         run: |
-          if (Test-Path "C:\MT5\Config\optimize.ini") {
-            Write-Host "Starting MT5 Strategy Tester for optimize.ini (MyTrader80_ScalpHedge)..."
-            $proc = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\optimize.ini`"" -PassThru -Wait
-            Write-Host "Tester exited with code: $($proc.ExitCode)"
+          $pairs = @("EURUSDc", "USDJPYc", "AUDUSDc")
+          foreach ($sym in $pairs) {
+            Write-Host "=== Running 24-Month Quantum DSP Optimization for $sym ==="
+            $proc = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\opt_$sym.ini`"" -PassThru -Wait
+            Write-Host "$sym exited with code: $($proc.ExitCode)"
             Get-Process -Name "metatester64" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
             Start-Sleep -Seconds 3
-          } else {
-            throw "C:\MT5\Config\optimize.ini not found!"
           }
-
-          Get-ChildItem "C:\MT5" -Filter "Report*.xml" -ErrorAction SilentlyContinue | Copy-Item -Destination "C:\MT5\reports\" -Force
-          Get-ChildItem "C:\MT5" -Filter "*report*.htm*" -ErrorAction SilentlyContinue | Copy-Item -Destination "C:\MT5\reports\" -Force
-          Write-Host "Reports collected in C:\MT5\reports:"
+          Get-ChildItem "C:\MT5" -Filter "*.xml" -ErrorAction SilentlyContinue | Copy-Item -Destination "C:\MT5\reports\" -Force
           Get-ChildItem "C:\MT5\reports\"
 
-      - name: Upload Optimization Reports & Logs
+      - name: Upload Multi-Pair Quantum DSP Reports
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
-          name: mt5-optimization-results-eurusdc
+          name: MyTrader90-QuantumDSP-MultiPair-Reports
           path: |
             C:\MT5\reports\
             C:\MT5\Tester\logs\
-            C:\MT5\Logs\
           if-no-files-found: warn
