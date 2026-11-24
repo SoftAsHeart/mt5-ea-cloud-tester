@@ -1,3 +1,34 @@
+name: MT5 Quantum Turbo DSP Multi-Pair Walk-Forward (v9.50)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-mt5-tester:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Download MT5 Binaries & Profile from Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path "C:\MT5"
+          gh release download mt5-binaries --dir "C:\MT5"
+          Get-ChildItem "C:\MT5" -Filter "*.zip" | ForEach-Object {
+            Expand-Archive -Path $_.FullName -DestinationPath "C:\MT5" -Force
+          }
+          Get-ChildItem "C:\MT5" -Filter "*.exe" -Recurse | Where-Object { $_.DirectoryName -ne "C:\MT5" } | ForEach-Object {
+            Copy-Item $_.FullName -Destination "C:\MT5\" -Force
+          }
+          Get-ChildItem "C:\MT5" -Directory -Recurse | Where-Object { $_.Name -in @("Config", "Bases") -and $_.Parent.FullName -ne "C:\MT5" } | ForEach-Object {
+            Copy-Item $_.FullName -Destination "C:\MT5\" -Recurse -Force
+          }
+
       - name: Compile EA, Warmup Exness & Generate Multi-Pair Configs
         env:
           DEMO_LOGIN: ${{ secrets.EXNESS_DEMO_LOGIN }}
@@ -41,3 +72,27 @@
             }
             $out | Set-Content "C:\MT5\Config\opt_$sym.ini"
           }
+
+      - name: Run Multi-Pair Walk-Forward Optimizations (EURUSDc, USDJPYc, AUDUSDc)
+        shell: powershell
+        run: |
+          $pairs = @("EURUSDc", "USDJPYc", "AUDUSDc")
+          foreach ($sym in $pairs) {
+            Write-Host "=== Running 24-Month Quantum Turbo Optimization for $sym ==="
+            $proc = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\opt_$sym.ini`"" -PassThru -Wait
+            Write-Host "$sym exited with code: $($proc.ExitCode)"
+            Get-Process -Name "metatester64" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 3
+          }
+          Get-ChildItem "C:\MT5" -Filter "*.xml" -ErrorAction SilentlyContinue | Copy-Item -Destination "C:\MT5\reports\" -Force
+          Get-ChildItem "C:\MT5\reports\"
+
+      - name: Upload Multi-Pair Quantum Turbo Reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: MyTrader95-TurboDSP-MultiPair-Reports
+          path: |
+            C:\MT5\reports\
+            C:\MT5\Tester\logs\
+          if-no-files-found: warn
