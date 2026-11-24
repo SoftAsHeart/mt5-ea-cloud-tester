@@ -1,0 +1,74 @@
+name: MT5 Walk-Forward Optimization (MyTrader80 EURUSDc)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'MQL5/Experts/MyTrader80_ScalpHedge.mq5'
+      - 'config/optimize.ini'
+
+jobs:
+  optimize-mt80:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Directories
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "C:\MT5"
+          New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Experts"
+          New-Item -ItemType Directory -Force -Path "C:\MT5\reports"
+
+      - name: Download & Install Exness MT5 Terminal
+        shell: pwsh
+        run: |
+          $installer = "C:\MT5\exness5setup.exe"
+          Invoke-WebRequest -Uri "https://mql5.com" -OutFile $installer
+          Start-Process -FilePath $installer -ArgumentList "/auto", "/path:C:\MT5" -Wait
+          Start-Sleep -Seconds 10
+
+      - name: Copy EA & Inject Secrets into optimize.ini
+        shell: pwsh
+        env:
+          EXNESS_LOGIN: ${{ secrets.EXNESS_LOGIN }}
+          EXNESS_PASS: ${{ secrets.EXNESS_PASS }}
+        run: |
+          Copy-Item "MQL5\Experts\MyTrader80_ScalpHedge.mq5" "C:\MT5\MQL5\Experts\MyTrader80_ScalpHedge.mq5" -Force
+          $ini = Get-Content "config\optimize.ini" -Raw
+          $ini = $ini.Replace('${{ secrets.EXNESS_LOGIN }}', $env:EXNESS_LOGIN)
+          $ini = $ini.Replace('${{ secrets.EXNESS_PASS }}', $env:EXNESS_PASS)
+          Set-Content -Path "C:\MT5\optimize.ini" -Value $ini
+
+      - name: Compile MyTrader80_ScalpHedge.mq5 via MetaEditor
+        shell: pwsh
+        run: |
+          $metaeditor = Get-ChildItem -Path "C:\MT5" -Filter "metaeditor64.exe" -Recurse | Select-Object -First 1
+          if (-not $metaeditor) { throw "metaeditor64.exe not found!" }
+          & $metaeditor.FullName /compile:"C:\MT5\MQL5\Experts\MyTrader80_ScalpHedge.mq5" /log:"C:\MT5\compile.log"
+          Start-Sleep -Seconds 5
+          Get-Content "C:\MT5\compile.log"
+          if (-not (Test-Path "C:\MT5\MQL5\Experts\MyTrader80_ScalpHedge.ex5")) {
+            throw "Compilation failed! Check compile.log above."
+          }
+
+      - name: Run 24-Month Walk-Forward Optimization
+        shell: pwsh
+        run: |
+          $terminal = Get-ChildItem -Path "C:\MT5" -Filter "terminal64.exe" -Recurse | Select-Object -First 1
+          if (-not $terminal) { throw "terminal64.exe not found!" }
+          Start-Process -FilePath $terminal.FullName -ArgumentList "/portable", "/config:C:\MT5\optimize.ini" -Wait
+
+      - name: Collect & Upload Optimization Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyTrader80-EURUSDc-WalkForward-Reports
+          path: |
+            C:\MT5\reports\*
+            C:\MT5\compile.log
+            C:\MT5\Tester\logs\*.log
+          retention-days: 30
