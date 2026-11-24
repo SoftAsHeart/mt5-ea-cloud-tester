@@ -40,14 +40,14 @@ jobs:
           New-Item -ItemType Directory -Force -Path "C:\MT5\Config"
           New-Item -ItemType Directory -Force -Path "C:\MT5\reports"
 
-          Get-ChildItem -Path "." -Recurse -Filter "MyTrader90_TurboDSP.*" | Copy-Item -Destination "C:\MT5\MQL5\Experts\" -Force
-          if ((Test-Path "C:\MT5\metaeditor64.exe") -and (Test-Path "C:\MT5\MQL5\Experts\MyTrader90_TurboDSP.mq5")) {
-            & "C:\MT5\metaeditor64.exe" /compile:"C:\MT5\MQL5\Experts\MyTrader90_TurboDSP.mq5" /log:"C:\MT5\reports\compile_v90.log"
+          Get-ChildItem -Path "." -Recurse -Filter "MyTrader95_TurboDSP.*" | Copy-Item -Destination "C:\MT5\MQL5\Experts\" -Force
+          if ((Test-Path "C:\MT5\metaeditor64.exe") -and (Test-Path "C:\MT5\MQL5\Experts\MyTrader95_TurboDSP.mq5")) {
+            & "C:\MT5\metaeditor64.exe" /compile:"C:\MT5\MQL5\Experts\MyTrader95_TurboDSP.mq5" /log:"C:\MT5\reports\compile_v90.log"
             Start-Sleep -Seconds 3
             Get-Content "C:\MT5\reports\compile_v90.log"
           }
-          if (-not (Test-Path "C:\MT5\MQL5\Experts\MyTrader90_TurboDSP.ex5")) {
-            throw "MyTrader90_TurboDSP.ex5 missing or compilation failed!"
+          if (-not (Test-Path "C:\MT5\MQL5\Experts\MyTrader95_TurboDSP.ex5")) {
+            throw "MyTrader95_TurboDSP.ex5 missing or compilation failed!"
           }
 
           $login  = $env:DEMO_LOGIN.Trim()
