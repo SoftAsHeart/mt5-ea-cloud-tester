@@ -1,103 +1,129 @@
-name: MT5 Walk-Forward Optimization (MyTrader80 EURUSDc)
+name: MT5 Cloud Genetic Optimization (MyTrader80 EURUSDc)
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'MQL5/Experts/MyTrader80_ScalpHedge.mq5'
-      - 'config/optimize.ini'
-      - '.github/workflows/mt5_walkforward.yml'
 
 jobs:
-  optimize-mt80:
+  run-mt5-tester:
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 360
 
     steps:
-      - name: Checkout Repository (with Pre-Packed Exness MT5)
-        uses: actions/checkout@v4
-        with:
-          lfs: true
+      - name: Checkout Repository
+        uses: actions/checkout@v5
 
-      - name: Prepare Exness MT5 Terminal from Repository Pack
-        shell: pwsh
+      - name: Download MT5 Binaries & Profile from Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path "C:\MT5"
-          
-          # 1. If the Exness MT5 pack was uploaded as a .zip file, extract it to C:\MT5
-          $zip = Get-ChildItem -Path "." -Filter "*.zip" -Recurse | Select-Object -First 1
-          if ($zip) {
-            Write-Host "Extracting MT5 pack: $($zip.FullName)"
-            Expand-Archive -Path $zip.FullName -DestinationPath "C:\MT5" -Force
+          gh release download mt5-binaries --dir "C:\MT5"
+          Get-ChildItem "C:\MT5" -Filter "*.zip" | ForEach-Object {
+            Expand-Archive -Path $_.FullName -DestinationPath "C:\MT5" -Force
           }
-
-          # 2. Locate terminal64.exe (either extracted or already uncompressed in repo)
-          $term = Get-ChildItem -Path "C:\MT5", "." -Filter "terminal64.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $term) {
-            throw "terminal64.exe not found! Ensure the Exness MT5 folder or zip is committed in the repo."
+          Get-ChildItem "C:\MT5" -Filter "*.exe" -Recurse | Where-Object { $_.DirectoryName -ne "C:\MT5" } | ForEach-Object {
+            Copy-Item $_.FullName -Destination "C:\MT5\" -Force
           }
+          Get-ChildItem "C:\MT5" -Directory -Recurse | Where-Object { $_.Name -in @("Config", "Bases") -and $_.Parent.FullName -ne "C:\MT5" } | ForEach-Object {
+            Copy-Item $_.FullName -Destination "C:\MT5\" -Recurse -Force
+          }
+          Write-Host "Root contents of C:\MT5:"
+          Get-ChildItem "C:\MT5"
 
-          $mt5Root = $term.DirectoryName
-          Write-Host "Found MT5 Terminal Root at: $mt5Root"
-          echo "MT5_ROOT=$mt5Root" >> $env:GITHUB_ENV
-
-          New-Item -ItemType Directory -Force -Path "$mt5Root\MQL5\Experts"
-          New-Item -ItemType Directory -Force -Path "$mt5Root\reports"
-
-      - name: Copy EA & Inject Secrets into optimize.ini
-        shell: pwsh
+      - name: Compile EA, Prepare Config & Inject Exness Secrets
         env:
-          EXNESS_LOGIN: ${{ secrets.EXNESS_LOGIN }}
-          EXNESS_PASS: ${{ secrets.EXNESS_PASS }}
+          DEMO_LOGIN: ${{ secrets.EXNESS_DEMO_LOGIN }}
+          DEMO_PASS: ${{ secrets.EXNESS_DEMO_PASS }}
+          DEMO_SERVER: ${{ secrets.EXNESS_DEMO_SERVER }}
+        shell: powershell
         run: |
-          $mt5Root = $env:MT5_ROOT
-          
-          # Copy Expert Advisor
-          $ea = Get-ChildItem -Path "." -Filter "MyTrader80_ScalpHedge.mq5" -Recurse | Select-Object -First 1
-          if (-not $ea) { throw "MyTrader80_ScalpHedge.mq5 not found in repository!" }
-          Copy-Item $ea.FullName "$mt5Root\MQL5\Experts\MyTrader80_ScalpHedge.mq5" -Force
+          New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Experts"
+          New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Profiles\Tester"
+          New-Item -ItemType Directory -Force -Path "C:\MT5\Config"
+          New-Item -ItemType Directory -Force -Path "C:\MT5\reports"
 
-          # Copy any pre-uploaded Exness account/server config files (*.dat / servers.dat / accounts.dat) if present
-          Get-ChildItem -Path "." -Include "accounts.dat","servers.dat" -Recurse | ForEach-Object {
-            New-Item -ItemType Directory -Force -Path "$mt5Root\Config"
-            Copy-Item $_.FullName "$mt5Root\Config\$($_.Name)" -Force
-            Write-Host "Copied account/server file: $($_.Name)"
+          # Copy any .mq5 source files and compile with MetaEditor
+          Get-ChildItem -Path "." -Recurse -Filter "*.mq5" | ForEach-Object {
+            Copy-Item $_.FullName -Destination "C:\MT5\MQL5\Experts\" -Force
+            if (Test-Path "C:\MT5\metaeditor64.exe") {
+              Write-Host "Compiling $($_.Name)..."
+              & "C:\MT5\metaeditor64.exe" /compile:"C:\MT5\MQL5\Experts\$($_.Name)" /log:"C:\MT5\reports\compile_$($_.BaseName).log"
+              Start-Sleep -Seconds 3
+              if (Test-Path "C:\MT5\reports\compile_$($_.BaseName).log") {
+                Get-Content "C:\MT5\reports\compile_$($_.BaseName).log"
+              }
+            }
           }
 
-          # Prepare optimize.ini (inject secrets if configured, or keep pre-packed account login)
-          $ini = Get-Content "config\optimize.ini" -Raw
-          if ($env:EXNESS_LOGIN) { $ini = $ini.Replace('${{ secrets.EXNESS_LOGIN }}', $env:EXNESS_LOGIN) }
-          if ($env:EXNESS_PASS)  { $ini = $ini.Replace('${{ secrets.EXNESS_PASS }}', $env:EXNESS_PASS) }
-          Set-Content -Path "$mt5Root\optimize.ini" -Value $ini
+          # Also copy any pre-compiled .ex5 files anywhere in the repo
+          Get-ChildItem -Path "." -Recurse -Filter "*.ex5" | Copy-Item -Destination "C:\MT5\MQL5\Experts\" -Force
+          Write-Host "EX5 files ready in C:\MT5\MQL5\Experts:"
+          Get-ChildItem "C:\MT5\MQL5\Experts\*.ex5"
 
-      - name: Compile MyTrader80_ScalpHedge.mq5 via MetaEditor
-        shell: pwsh
-        run: |
-          $mt5Root = $env:MT5_ROOT
-          $metaeditor = Get-ChildItem -Path $mt5Root -Filter "metaeditor64.exe" -Recurse | Select-Object -First 1
-          if (-not $metaeditor) { throw "metaeditor64.exe not found inside $mt5Root!" }
+          # Convert all .set files to UTF-16 LE in Tester profile
+          Get-ChildItem -Path "." -Recurse -Filter "*.set" | ForEach-Object {
+            Get-Content $_.FullName | Set-Content -Path "C:\MT5\MQL5\Profiles\Tester\$($_.Name)" -Encoding Unicode
+          }
+          Write-Host "SET files copied to C:\MT5\MQL5\Profiles\Tester:"
+          Get-ChildItem "C:\MT5\MQL5\Profiles\Tester\*.set"
 
-          & $metaeditor.FullName /compile:"$mt5Root\MQL5\Experts\MyTrader80_ScalpHedge.mq5" /log:"$mt5Root\compile.log"
-          Start-Sleep -Seconds 5
-          Get-Content "$mt5Root\compile.log"
+          $login = $env:DEMO_LOGIN.Trim()
+          $pass = $env:DEMO_PASS.Trim()
+          $server = $env:DEMO_SERVER.Trim()
 
-          if (-not (Test-Path "$mt5Root\MQL5\Experts\MyTrader80_ScalpHedge.ex5")) {
-            throw "Compilation failed! Check compile.log above."
+          $warmLines = @("[Common]", "Login=$login", "Password=$pass", "Server=$server", "KeepPrivate=1", "NewsEnable=0")
+          $warmLines | Set-Content "C:\MT5\Config\warmup.ini"
+
+          Write-Host "Pre-warming Exness login on server: [$server]..."
+          $warm = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\warmup.ini`"" -PassThru
+          Start-Sleep -Seconds 25
+          if (-not $warm.HasExited) {
+            Stop-Process -Id $warm.Id -Force
+            Start-Sleep -Seconds 3
           }
 
-      - name: Run 24-Month Walk-Forward Optimization
-        shell: pwsh
-        run: |
-          $mt5Root = $env:MT5_ROOT
-          Start-Process -FilePath "$mt5Root\terminal64.exe" -ArgumentList "/portable", "/config:$mt5Root\optimize.ini" -Wait
+          # Inject Exness credentials into every .ini config file in config\
+          Get-ChildItem -Path "config" -Filter "*.ini" | ForEach-Object {
+            $iniName = $_.Name
+            $lines = Get-Content $_.FullName
+            $out = foreach ($line in $lines) {
+              if ($line -match "^Login=") { "Login=$login" }
+              elseif ($line -match "^Password=") { "Password=$pass" }
+              elseif ($line -match "^Server=") { "Server=$server" }
+              else { $line }
+            }
+            $out | Set-Content "C:\MT5\Config\$iniName"
 
-      - name: Collect & Upload Optimization Reports
+            Write-Host "--- Verified Config: $iniName (Password Masked) ---"
+            $out | Where-Object { $_ -notmatch "^Password=" } | Write-Host
+          }
+
+      - name: Run MT5 Strategy Tester (MyTrader80 EURUSDc)
+        shell: powershell
+        run: |
+          if (Test-Path "C:\MT5\Config\optimize.ini") {
+            Write-Host "Starting MT5 Strategy Tester for optimize.ini (MyTrader80_ScalpHedge)..."
+            $proc = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\optimize.ini`"" -PassThru -Wait
+            Write-Host "Tester exited with code: $($proc.ExitCode)"
+            Get-Process -Name "metatester64" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 3
+          } else {
+            throw "C:\MT5\Config\optimize.ini not found!"
+          }
+
+          Get-ChildItem "C:\MT5" -Filter "Report*.xml" -ErrorAction SilentlyContinue | Copy-Item -Destination "C:\MT5\reports\" -Force
+          Get-ChildItem "C:\MT5" -Filter "*report*.htm*" -ErrorAction SilentlyContinue | Copy-Item -Destination "C:\MT5\reports\" -Force
+          Write-Host "Reports collected in C:\MT5\reports:"
+          Get-ChildItem "C:\MT5\reports\"
+
+      - name: Upload Optimization Reports & Logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
-          name: MyTrader80-EURUSDc-WalkForward-Reports
+          name: mt5-optimization-results-eurusdc
           path: |
-            ${{ env.MT5_ROOT }}\reports\*
-            ${{ env.MT5_ROOT }}\compile.log
-            ${{ env.MT5_ROOT }}\Tester\logs\*.log
-          retention-days: 30
+            C:\MT5\reports\
+            C:\MT5\Tester\logs\
+            C:\MT5\Logs\
+          if-no-files-found: warn
