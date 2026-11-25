@@ -1,4 +1,4 @@
-name: MT5 Quantum Turbo 8-Pair 12M Walk-Forward
+name: MT5 Quantum Turbo Batch-3 Crosses & Gold Walk-Forward
 
 on:
   workflow_dispatch:
@@ -29,7 +29,7 @@ jobs:
             Copy-Item $_.FullName -Destination "C:\MT5\" -Recurse -Force
           }
 
-      - name: Compile EA, Warmup Exness & Generate 8-Pair Configs
+      - name: Compile EA, Warmup Exness & Generate Batch-3 Configs
         env:
           DEMO_LOGIN: ${{ secrets.EXNESS_DEMO_LOGIN }}
           DEMO_PASS: ${{ secrets.EXNESS_DEMO_PASS }}
@@ -60,23 +60,24 @@ jobs:
           if (-not $warm.HasExited) { Stop-Process -Id $warm.Id -Force; Start-Sleep -Seconds 3 }
 
           $baseIni = Get-Content "config\optimize.ini"
-          $pairs = @("USDJPYc", "EURJPYc", "GBPJPYc", "CADJPYc", "AUDJPYc", "EURUSDc", "GBPUSDc", "USDCADc")
+          $pairs = @("USDCHFc", "NZDJPYc", "AUDCADc", "EURCADc", "NZDUSDc", "XAUUSDc")
           foreach ($sym in $pairs) {
             $out = foreach ($line in $baseIni) {
               if ($line -match "^Login=") { "Login=$login" }
               elseif ($line -match "^Password=") { "Password=$pass" }
               elseif ($line -match "^Server=") { "Server=$server" }
               elseif ($line -match "^Symbol=") { "Symbol=$sym" }
-              elseif ($line -match "^Report=") { "Report=reports\opt_12m_$sym.htm" }
+              elseif ($line -match "^Report=") { "Report=reports\opt_b3_$sym.htm" }
+              elseif ($line -match "^InpMaxSpreadPoints=") { "InpMaxSpreadPoints=35||35||5||35||N" }
               else { $line }
             }
             $out | Set-Content "C:\MT5\Config\opt_$sym.ini"
           }
 
-      - name: Run 8-Pair 12-Month Walk-Forward Optimizations
+      - name: Run Batch-3 6-Pair 12-Month Walk-Forward Optimizations
         shell: powershell
         run: |
-          $pairs = @("USDJPYc", "EURJPYc", "GBPJPYc", "CADJPYc", "AUDJPYc", "EURUSDc", "GBPUSDc", "USDCADc")
+          $pairs = @("USDCHFc", "NZDJPYc", "AUDCADc", "EURCADc", "NZDUSDc", "XAUUSDc")
           foreach ($sym in $pairs) {
             Write-Host "=== Running 12-Month Quantum Turbo Optimization for $sym ==="
             $proc = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\opt_$sym.ini`"" -PassThru -Wait
@@ -87,11 +88,11 @@ jobs:
           Get-ChildItem "C:\MT5" -Filter "*.xml" -ErrorAction SilentlyContinue | Copy-Item -Destination "C:\MT5\reports\" -Force
           Get-ChildItem "C:\MT5\reports\"
 
-      - name: Upload 8-Pair 12M Reports
+      - name: Upload Batch-3 Reports
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: MyTrader95-8Pair-12M-Reports
+          name: MyTrader95-Batch3-Crosses-Gold-Reports
           path: |
             C:\MT5\reports\
             C:\MT5\Tester\logs\
