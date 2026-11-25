@@ -1,4 +1,4 @@
-name: MT5 Quantum Turbo DSP Multi-Pair Walk-Forward (v9.50)
+name: MT5 Quantum Turbo 8-Pair 12M Walk-Forward
 
 on:
   workflow_dispatch:
@@ -29,7 +29,7 @@ jobs:
             Copy-Item $_.FullName -Destination "C:\MT5\" -Recurse -Force
           }
 
-      - name: Compile EA, Warmup Exness & Generate Multi-Pair Configs
+      - name: Compile EA, Warmup Exness & Generate 8-Pair Configs
         env:
           DEMO_LOGIN: ${{ secrets.EXNESS_DEMO_LOGIN }}
           DEMO_PASS: ${{ secrets.EXNESS_DEMO_PASS }}
@@ -60,25 +60,25 @@ jobs:
           if (-not $warm.HasExited) { Stop-Process -Id $warm.Id -Force; Start-Sleep -Seconds 3 }
 
           $baseIni = Get-Content "config\optimize.ini"
-          $pairs = @("EURUSDc", "USDJPYc", "AUDUSDc")
+          $pairs = @("USDJPYc", "EURJPYc", "GBPJPYc", "CADJPYc", "AUDJPYc", "EURUSDc", "GBPUSDc", "USDCADc")
           foreach ($sym in $pairs) {
             $out = foreach ($line in $baseIni) {
               if ($line -match "^Login=") { "Login=$login" }
               elseif ($line -match "^Password=") { "Password=$pass" }
               elseif ($line -match "^Server=") { "Server=$server" }
               elseif ($line -match "^Symbol=") { "Symbol=$sym" }
-              elseif ($line -match "^Report=") { "Report=reports\opt_v95_$sym.htm" }
+              elseif ($line -match "^Report=") { "Report=reports\opt_12m_$sym.htm" }
               else { $line }
             }
             $out | Set-Content "C:\MT5\Config\opt_$sym.ini"
           }
 
-      - name: Run Multi-Pair Walk-Forward Optimizations (EURUSDc, USDJPYc, AUDUSDc)
+      - name: Run 8-Pair 12-Month Walk-Forward Optimizations
         shell: powershell
         run: |
-          $pairs = @("EURUSDc", "USDJPYc", "AUDUSDc")
+          $pairs = @("USDJPYc", "EURJPYc", "GBPJPYc", "CADJPYc", "AUDJPYc", "EURUSDc", "GBPUSDc", "USDCADc")
           foreach ($sym in $pairs) {
-            Write-Host "=== Running 24-Month Quantum Turbo Optimization for $sym ==="
+            Write-Host "=== Running 12-Month Quantum Turbo Optimization for $sym ==="
             $proc = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\opt_$sym.ini`"" -PassThru -Wait
             Write-Host "$sym exited with code: $($proc.ExitCode)"
             Get-Process -Name "metatester64" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -87,11 +87,11 @@ jobs:
           Get-ChildItem "C:\MT5" -Filter "*.xml" -ErrorAction SilentlyContinue | Copy-Item -Destination "C:\MT5\reports\" -Force
           Get-ChildItem "C:\MT5\reports\"
 
-      - name: Upload Multi-Pair Quantum Turbo Reports
+      - name: Upload 8-Pair 12M Reports
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: MyTrader95-TurboDSP-MultiPair-Reports
+          name: MyTrader95-8Pair-12M-Reports
           path: |
             C:\MT5\reports\
             C:\MT5\Tester\logs\
