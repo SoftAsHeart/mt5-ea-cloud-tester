@@ -11,6 +11,15 @@ on:
         options:
           - backtest
           - optimize
+      symbol_suffix:
+        description: "Account Suffix: c = Standard Cent (Real50), m = Standard/Pro (Trial15), none = Raw/Zero"
+        required: true
+        default: "c"
+        type: choice
+        options:
+          - "c"
+          - "m"
+          - "none"
       date_from:
         description: "Test Start Date (YYYY.MM.DD)"
         required: true
@@ -30,28 +39,27 @@ on:
 
 jobs:
   run-mt5-matrix:
-    name: ${{ matrix.symbol }} (${{ github.event.inputs.run_mode }})
+    name: ${{ matrix.base_symbol }} (${{ github.event.inputs.run_mode }})
     runs-on: windows-latest
     timeout-minutes: 120
-        strategy:
+    strategy:
       fail-fast: false
       matrix:
         include:
-          - symbol: USDJPYc
+          - base_symbol: USDJPY
             preset: MT97_USDJPY_M5.set
-          - symbol: EURUSDc
+          - base_symbol: EURUSD
             preset: MT97_EURUSD_M5.set
-          - symbol: USDCADc
+          - base_symbol: USDCAD
             preset: MT97_USDCAD_M5.set
-          - symbol: AUDJPYc
+          - base_symbol: AUDJPY
             preset: MT97_AUDJPY_M5.set
-          - symbol: EURJPYc
+          - base_symbol: EURJPY
             preset: MT97_EURJPY_M5.set
-          - symbol: GBPUSDc
+          - base_symbol: GBPUSD
             preset: MT97_GBPUSD_M5.set
-          - symbol: XAUUSDc
+          - base_symbol: XAUUSD
             preset: MT97_XAUUSD_M5.set
-
 
     steps:
       - name: Checkout Repository
@@ -85,6 +93,11 @@ jobs:
           New-Item -ItemType Directory -Force -Path "C:\MT5\Config"
           New-Item -ItemType Directory -Force -Path "C:\MT5\reports"
 
+          $sfx = if ("${{ github.event.inputs.symbol_suffix }}" -eq "none") { "" } else { "${{ github.event.inputs.symbol_suffix }}" }
+          $fullSymbol = "${{ matrix.base_symbol }}$sfx"
+          "FULL_SYMBOL=$fullSymbol" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Resolved Broker Symbol: $fullSymbol"
+
           Get-ChildItem -Path "." -Recurse -Filter "MyTrader97_AITurbo.*" | Copy-Item -Destination "C:\MT5\MQL5\Experts\" -Force
           if (-not (Test-Path "C:\MT5\MQL5\Experts\MyTrader97_AITurbo.ex5") -and (Test-Path "C:\MT5\metaeditor64.exe") -and (Test-Path "C:\MT5\MQL5\Experts\MyTrader97_AITurbo.mq5")) {
             & "C:\MT5\metaeditor64.exe" /compile:"C:\MT5\MQL5\Experts\MyTrader97_AITurbo.mq5" /log:"C:\MT5\reports\compile_v97.log"
@@ -105,15 +118,14 @@ jobs:
           Start-Sleep -Seconds 25
           if (-not $warm.HasExited) { Stop-Process -Id $warm.Id -Force; Start-Sleep -Seconds 3 }
 
-          # Read .set file directly and embed under [TesterInputs] (exact Batch-3 working format)
+          # Read .set file directly and embed under [TesterInputs]
           $setFile = Get-ChildItem -Path "." -Recurse -Filter "${{ matrix.preset }}" | Select-Object -First 1
           if (-not $setFile) { throw "Preset file ${{ matrix.preset }} not found in repository!" }
           $setLines = Get-Content $setFile.FullName | Where-Object { $_ -and -not $_.StartsWith(";") -and -not $_.StartsWith("#") }
 
-                    $optFlag = if ("${{ github.event.inputs.run_mode }}" -eq "optimize") { "2" } else { "0" }
+          $optFlag = if ("${{ github.event.inputs.run_mode }}" -eq "optimize") { "2" } else { "0" }
           $fwdFlag = if ("${{ github.event.inputs.run_mode }}" -eq "optimize") { "2" } else { "0" }
           $repExt  = if ("${{ github.event.inputs.run_mode }}" -eq "optimize") { "xml" } else { "htm" }
-
 
           $iniLines = @(
             "[Common]",
@@ -125,7 +137,7 @@ jobs:
             "",
             "[Tester]",
             "Expert=MyTrader97_AITurbo.ex5",
-            "Symbol=${{ matrix.symbol }}",
+            "Symbol=$fullSymbol",
             "Period=M5",
             "Login=$login",
             "Model=${{ github.event.inputs.model_mode }}",
@@ -142,21 +154,22 @@ jobs:
             "UseRemote=0",
             "UseCloud=0",
             "Visual=0",
-            "Report=reports\mt97_${{ matrix.symbol }}.htm",
+            "Report=reports\mt97_$fullSymbol.$repExt",
             "ReplaceReport=1",
             "ShutdownTerminal=1",
             "",
             "[TesterInputs]"
           ) + $setLines
 
-          $iniLines | Set-Content "C:\MT5\Config\run_${{ matrix.symbol }}.ini"
+          $iniLines | Set-Content "C:\MT5\Config\run_$fullSymbol.ini"
 
-      - name: Run MT5 Strategy Tester (${{ matrix.symbol }})
+      - name: Run MT5 Strategy Tester
         shell: powershell
         run: |
-          Write-Host "=== Running MT97 Quantum (${{ github.event.inputs.run_mode }}) for ${{ matrix.symbol }} ==="
-          $proc = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\run_${{ matrix.symbol }}.ini`"" -PassThru -Wait
-          Write-Host "${{ matrix.symbol }} exited with code: $($proc.ExitCode)"
+          $fullSymbol = $env:FULL_SYMBOL
+          Write-Host "=== Running MT97 Quantum (${{ github.event.inputs.run_mode }}) for $fullSymbol ==="
+          $proc = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\run_$fullSymbol.ini`"" -PassThru -Wait
+          Write-Host "$fullSymbol exited with code: $($proc.ExitCode)"
           Get-Process -Name "metatester64" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
           Start-Sleep -Seconds 3
 
@@ -167,17 +180,17 @@ jobs:
         if: always()
         shell: powershell
         run: |
+          $fullSymbol = $env:FULL_SYMBOL
           $parser = Get-ChildItem -Path "." -Recurse -Filter "parse_mt97_results.py" | Select-Object -First 1
-                   if ($parser -and (Test-Path "C:\MT5\reports")) {
-            python $parser.FullName "${{ matrix.symbol }}" "C:\MT5\reports" "${{ github.event.inputs.run_mode }}"
+          if ($parser -and (Test-Path "C:\MT5\reports")) {
+            python $parser.FullName "$fullSymbol" "C:\MT5\reports" "${{ github.event.inputs.run_mode }}"
           }
-
 
       - name: Upload Symbol Reports
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: MT97-${{ matrix.symbol }}-Reports
+          name: MT97-${{ matrix.base_symbol }}-Reports
           path: |
             C:\MT5\reports\
             C:\MT5\Tester\logs\
