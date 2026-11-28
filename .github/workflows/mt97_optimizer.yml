@@ -32,7 +32,7 @@ jobs:
   run-mt5-matrix:
     name: ${{ matrix.symbol }} (${{ github.event.inputs.run_mode }})
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -61,93 +61,120 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Install Portable Exness MT5 Terminal
-        shell: pwsh
+      - name: Download MT5 Binaries & Profile from Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: powershell
         run: |
-          New-Item -ItemType Directory -Force -Path C:\MT5 | Out-Null
-          Invoke-WebRequest -Uri "https://mql5.com" -OutFile C:\MT5\mt5setup.exe
-          Start-Process -FilePath C:\MT5\mt5setup.exe -ArgumentList "/auto" -Wait
-          $term = Get-ChildItem -Path "C:\Program Files" -Filter "terminal64.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $term) {
-              $term = Get-ChildItem -Path "C:\MT5" -Filter "terminal64.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          New-Item -ItemType Directory -Force -Path "C:\MT5"
+          gh release download mt5-binaries --dir "C:\MT5"
+          Get-ChildItem "C:\MT5" -Filter "*.zip" | ForEach-Object {
+            Expand-Archive -Path $_.FullName -DestinationPath "C:\MT5" -Force
           }
-          if (-not $term) { throw "terminal64.exe not found after install." }
-          $mt5Dir = $term.DirectoryName
-          "MT5_DIR=$mt5Dir" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Installed MT5 at: $mt5Dir"
-
-      - name: Stage Compiled EX5, Presets, and Config INI
-        shell: pwsh
-        run: |
-          $mt5Dir = $env:MT5_DIR
-          New-Item -ItemType Directory -Force -Path "$mt5Dir\MQL5\Experts" | Out-Null
-          New-Item -ItemType Directory -Force -Path "$mt5Dir\MQL5\Presets" | Out-Null
-          New-Item -ItemType Directory -Force -Path "$mt5Dir\MQL5\Profiles\Tester" | Out-Null
-          New-Item -ItemType Directory -Force -Path "$mt5Dir\Config" | Out-Null
-
-          # Copy pre-compiled .ex5 (and compile .mq5 only if .ex5 is absent)
-          if (Test-Path "MQL5\Experts\MyTrader97_AITurbo.ex5") {
-              Copy-Item "MQL5\Experts\MyTrader97_AITurbo.ex5" "$mt5Dir\MQL5\Experts\MyTrader97_AITurbo.ex5" -Force
-              Write-Host "Copied pre-compiled MyTrader97_AITurbo.ex5"
-          } elseif (Test-Path "MQL5\Experts\MyTrader97_AITurbo.mq5") {
-              Copy-Item "MQL5\Experts\MyTrader97_AITurbo.mq5" "$mt5Dir\MQL5\Experts\MyTrader97_AITurbo.mq5" -Force
-              & "$mt5Dir\metaeditor64.exe" /compile:"$mt5Dir\MQL5\Experts\MyTrader97_AITurbo.mq5" /log:"$mt5Dir\compile.log"
-              Get-Content "$mt5Dir\compile.log" -ErrorAction SilentlyContinue
-          } else {
-              throw "Neither MyTrader97_AITurbo.ex5 nor .mq5 found in MQL5\Experts\"
+          Get-ChildItem "C:\MT5" -Filter "*.exe" -Recurse | Where-Object { $_.DirectoryName -ne "C:\MT5" } | ForEach-Object {
+            Copy-Item $_.FullName -Destination "C:\MT5\" -Force
+          }
+          Get-ChildItem "C:\MT5" -Directory -Recurse | Where-Object { $_.Name -in @("Config", "Bases") -and $_.Parent.FullName -ne "C:\MT5" } | ForEach-Object {
+            Copy-Item $_.FullName -Destination "C:\MT5\" -Recurse -Force
           }
 
-          # Copy .set preset from MQL5\Experts\ into both MT5 Presets and Tester Profiles
-          Copy-Item "MQL5\Experts\${{ matrix.preset }}" "$mt5Dir\MQL5\Presets\${{ matrix.preset }}" -Force
-          Copy-Item "MQL5\Experts\${{ matrix.preset }}" "$mt5Dir\MQL5\Profiles\Tester\${{ matrix.preset }}" -Force
+      - name: Stage EX5, Warmup Exness & Build Tester INI
+        env:
+          DEMO_LOGIN: ${{ secrets.EXNESS_DEMO_LOGIN }}
+          DEMO_PASS: ${{ secrets.EXNESS_DEMO_PASS }}
+          DEMO_SERVER: ${{ secrets.EXNESS_DEMO_SERVER }}
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Experts"
+          New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Presets"
+          New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Profiles\Tester"
+          New-Item -ItemType Directory -Force -Path "C:\MT5\Config"
+          New-Item -ItemType Directory -Force -Path "C:\MT5\reports"
 
-          # Prepare headless .ini from Config\ folder with secrets & mode overrides
-          $iniRaw = Get-Content "Config\${{ matrix.ini }}" -Raw
+          # Copy pre-compiled .ex5 (and compile .mq5 only if .ex5 is missing)
+          Get-ChildItem -Path "MQL5\Experts" -Filter "MyTrader97_AITurbo.*" | Copy-Item -Destination "C:\MT5\MQL5\Experts\" -Force
+          if (-not (Test-Path "C:\MT5\MQL5\Experts\MyTrader97_AITurbo.ex5") -and (Test-Path "C:\MT5\metaeditor64.exe") -and (Test-Path "C:\MT5\MQL5\Experts\MyTrader97_AITurbo.mq5")) {
+            & "C:\MT5\metaeditor64.exe" /compile:"C:\MT5\MQL5\Experts\MyTrader97_AITurbo.mq5" /log:"C:\MT5\reports\compile_v97.log"
+            Start-Sleep -Seconds 3
+            Get-Content "C:\MT5\reports\compile_v97.log"
+          }
+          if (-not (Test-Path "C:\MT5\MQL5\Experts\MyTrader97_AITurbo.ex5")) {
+            throw "MyTrader97_AITurbo.ex5 missing or compilation failed!"
+          }
+
+          # Copy .set preset into Presets and Tester Profiles
+          Copy-Item "MQL5\Experts\${{ matrix.preset }}" "C:\MT5\MQL5\Presets\${{ matrix.preset }}" -Force
+          Copy-Item "MQL5\Experts\${{ matrix.preset }}" "C:\MT5\MQL5\Profiles\Tester\${{ matrix.preset }}" -Force
+
+          $login  = $env:DEMO_LOGIN.Trim()
+          $pass   = $env:DEMO_PASS.Trim()
+          $server = $env:DEMO_SERVER.Trim()
+
+          # 25-second Exness broker warmup (syncs symbol specs, contract sizes & servers)
+          @("[Common]", "Login=$login", "Password=$pass", "Server=$server", "KeepPrivate=1", "NewsEnable=0") | Set-Content "C:\MT5\Config\warmup.ini"
+          $warm = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\warmup.ini`"" -PassThru
+          Start-Sleep -Seconds 25
+          if (-not $warm.HasExited) { Stop-Process -Id $warm.Id -Force; Start-Sleep -Seconds 3 }
+
+          # Build run.ini from your Config\mt97_*.ini with credentials & mode flags
           $optFlag = if ("${{ github.event.inputs.run_mode }}" -eq "optimize") { "2" } else { "0" }
           $fwdFlag = if ("${{ github.event.inputs.run_mode }}" -eq "optimize") { "2" } else { "0" }
+          $baseIni = Get-Content "Config\${{ matrix.ini }}"
 
-          $header = @"
-          [Common]
-          Login=${{ secrets.MT5_LOGIN }}
-          Password=${{ secrets.MT5_PASSWORD }}
-          Server=${{ secrets.MT5_SERVER }}
-          KeepPrivate=1
-          NewsEnable=0
-          CertInstall=1
-          "@
+          $commonHeader = @(
+            "[Common]",
+            "Login=$login",
+            "Password=$pass",
+            "Server=$server",
+            "KeepPrivate=1",
+            "NewsEnable=0"
+          )
 
-          $iniPatched = $iniRaw `
-            -replace "FromDate=.*", "FromDate=${{ github.event.inputs.date_from }}" `
-            -replace "ToDate=.*", "ToDate=${{ github.event.inputs.date_to }}" `
-            -replace "Model=.*", "Model=${{ github.event.inputs.model_mode }}" `
-            -replace "Optimization=.*", "Optimization=$optFlag" `
-            -replace "ForwardMode=.*", "ForwardMode=$fwdFlag" `
-            -replace "ExpertParameters=.*", "ExpertParameters=${{ matrix.preset }}"
+          $outBody = foreach ($line in $baseIni) {
+            if ($line -match "^Login=") { "Login=$login" }
+            elseif ($line -match "^Password=") { "Password=$pass" }
+            elseif ($line -match "^Server=") { "Server=$server" }
+            elseif ($line -match "^Symbol=") { "Symbol=${{ matrix.symbol }}" }
+            elseif ($line -match "^FromDate=") { "FromDate=${{ github.event.inputs.date_from }}" }
+            elseif ($line -match "^ToDate=") { "ToDate=${{ github.event.inputs.date_to }}" }
+            elseif ($line -match "^Model=") { "Model=${{ github.event.inputs.model_mode }}" }
+            elseif ($line -match "^Optimization=") { "Optimization=$optFlag" }
+            elseif ($line -match "^ForwardMode=") { "ForwardMode=$fwdFlag" }
+            elseif ($line -match "^ExpertParameters=") { "ExpertParameters=${{ matrix.preset }}" }
+            elseif ($line -match "^Report=") { "Report=reports\mt97_${{ matrix.symbol }}.htm" }
+            else { $line }
+          }
 
-          ($header + "`r`n`r`n" + $iniPatched) | Set-Content -Path "$mt5Dir\Config\run.ini" -Encoding Unicode
+          ($commonHeader + $outBody) | Set-Content "C:\MT5\Config\run_${{ matrix.symbol }}.ini"
 
-      - name: Execute MT5 Strategy Tester (${{ matrix.symbol }})
-        shell: pwsh
+      - name: Run MT5 Strategy Tester (${{ matrix.symbol }})
+        shell: powershell
         run: |
-          $mt5Dir = $env:MT5_DIR
-          Start-Process -FilePath "$mt5Dir\terminal64.exe" -ArgumentList "/portable", "/config:$mt5Dir\Config\run.ini" -Wait
-          New-Item -ItemType Directory -Force -Path "results\${{ matrix.symbol }}" | Out-Null
-          Get-ChildItem -Path $mt5Dir -Include "*.xml","*.htm","*.html","*.set" -Recurse |
-            Where-Object { $_.Name -like "*Report*" -or $_.Extension -eq ".xml" } |
-            Copy-Item -Destination "results\${{ matrix.symbol }}\" -Force -ErrorAction SilentlyContinue
-          Copy-Item "$mt5Dir\Tester\logs\*.log" "results\${{ matrix.symbol }}\" -Force -ErrorAction SilentlyContinue
+          Write-Host "=== Running MT97 Quantum (${{ github.event.inputs.run_mode }}) for ${{ matrix.symbol }} ==="
+          $proc = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\run_${{ matrix.symbol }}.ini`"" -PassThru -Wait
+          Write-Host "${{ matrix.symbol }} exited with code: $($proc.ExitCode)"
+          Get-Process -Name "metatester64" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 3
+
+          Get-ChildItem "C:\MT5" -Filter "*.xml" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination "C:\MT5\reports\" -Force
+          Get-ChildItem "C:\MT5\reports\"
 
       - name: Parse Results & Append to GitHub Summary
-        shell: pwsh
-        run: |
-          python MQL5/Experts/parse_mt97_results.py "${{ matrix.symbol }}" "results\${{ matrix.symbol }}"
-
-      - name: Upload Symbol Reports & Winning Sets
-        uses: actions/upload-artifact@v4
         if: always()
+        shell: powershell
+        run: |
+          if (Test-Path "MQL5\Experts\parse_mt97_results.py") {
+            python MQL5/Experts/parse_mt97_results.py "${{ matrix.symbol }}" "C:\MT5\reports"
+          }
+
+      - name: Upload Symbol Reports
+        if: always()
+        uses: actions/upload-artifact@v6
         with:
-          name: mt97-report-${{ matrix.symbol }}
-          path: results/${{ matrix.symbol }}/*
-          retention-days: 14
+          name: MT97-${{ matrix.symbol }}-Reports
+          path: |
+            C:\MT5\reports\
+            C:\MT5\Tester\logs\
+          if-no-files-found: warn
