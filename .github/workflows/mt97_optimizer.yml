@@ -38,25 +38,18 @@ jobs:
       matrix:
         include:
           - symbol: USDJPYm
-            ini: mt97_usdjpy.ini
             preset: MT97_USDJPY_M5.set
           - symbol: EURUSDm
-            ini: mt97_eurusd.ini
             preset: MT97_EURUSD_M5.set
           - symbol: USDCADm
-            ini: mt97_usdcad.ini
             preset: MT97_USDCAD_M5.set
           - symbol: AUDJPYm
-            ini: mt97_audjpy.ini
             preset: MT97_AUDJPY_M5.set
           - symbol: EURJPYm
-            ini: mt97_eurjpy.ini
             preset: MT97_EURJPY_M5.set
           - symbol: GBPUSDm
-            ini: mt97_gbpusd.ini
             preset: MT97_GBPUSD_M5.set
           - symbol: XAUUSDm
-            ini: mt97_xauusd.ini
             preset: MT97_XAUUSD_M5.set
 
     steps:
@@ -80,7 +73,7 @@ jobs:
             Copy-Item $_.FullName -Destination "C:\MT5\" -Recurse -Force
           }
 
-      - name: Stage EX5, Warmup Exness & Build Tester INI
+      - name: Stage EX5, Warmup Exness & Build Self-Contained Tester INI
         env:
           DEMO_LOGIN: ${{ secrets.EXNESS_DEMO_LOGIN }}
           DEMO_PASS: ${{ secrets.EXNESS_DEMO_PASS }}
@@ -88,13 +81,10 @@ jobs:
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Experts"
-          New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Presets"
-          New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Profiles\Tester"
           New-Item -ItemType Directory -Force -Path "C:\MT5\Config"
           New-Item -ItemType Directory -Force -Path "C:\MT5\reports"
 
-          # Copy pre-compiled .ex5 (and compile .mq5 only if .ex5 is missing)
-          Get-ChildItem -Path "MQL5\Experts" -Filter "MyTrader97_AITurbo.*" | Copy-Item -Destination "C:\MT5\MQL5\Experts\" -Force
+          Get-ChildItem -Path "." -Recurse -Filter "MyTrader97_AITurbo.*" | Copy-Item -Destination "C:\MT5\MQL5\Experts\" -Force
           if (-not (Test-Path "C:\MT5\MQL5\Experts\MyTrader97_AITurbo.ex5") -and (Test-Path "C:\MT5\metaeditor64.exe") -and (Test-Path "C:\MT5\MQL5\Experts\MyTrader97_AITurbo.mq5")) {
             & "C:\MT5\metaeditor64.exe" /compile:"C:\MT5\MQL5\Experts\MyTrader97_AITurbo.mq5" /log:"C:\MT5\reports\compile_v97.log"
             Start-Sleep -Seconds 3
@@ -104,50 +94,59 @@ jobs:
             throw "MyTrader97_AITurbo.ex5 missing or compilation failed!"
           }
 
-          # Copy .set preset into Presets and Tester Profiles
-          Copy-Item "MQL5\Experts\${{ matrix.preset }}" "C:\MT5\MQL5\Presets\${{ matrix.preset }}" -Force
-          Copy-Item "MQL5\Experts\${{ matrix.preset }}" "C:\MT5\MQL5\Profiles\Tester\${{ matrix.preset }}" -Force
-
           $login  = $env:DEMO_LOGIN.Trim()
           $pass   = $env:DEMO_PASS.Trim()
           $server = $env:DEMO_SERVER.Trim()
 
-          # 25-second Exness broker warmup (syncs symbol specs, contract sizes & servers)
+          # 25-second Exness broker warmup
           @("[Common]", "Login=$login", "Password=$pass", "Server=$server", "KeepPrivate=1", "NewsEnable=0") | Set-Content "C:\MT5\Config\warmup.ini"
           $warm = Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable", "/skipupdate", "/config:`"C:\MT5\Config\warmup.ini`"" -PassThru
           Start-Sleep -Seconds 25
           if (-not $warm.HasExited) { Stop-Process -Id $warm.Id -Force; Start-Sleep -Seconds 3 }
 
-          # Build run.ini from your Config\mt97_*.ini with credentials & mode flags
+          # Read .set file directly and embed under [TesterInputs] (exact Batch-3 working format)
+          $setFile = Get-ChildItem -Path "." -Recurse -Filter "${{ matrix.preset }}" | Select-Object -First 1
+          if (-not $setFile) { throw "Preset file ${{ matrix.preset }} not found in repository!" }
+          $setLines = Get-Content $setFile.FullName | Where-Object { $_ -and -not $_.StartsWith(";") -and -not $_.StartsWith("#") }
+
           $optFlag = if ("${{ github.event.inputs.run_mode }}" -eq "optimize") { "2" } else { "0" }
           $fwdFlag = if ("${{ github.event.inputs.run_mode }}" -eq "optimize") { "2" } else { "0" }
-          $baseIni = Get-Content "Config\${{ matrix.ini }}"
 
-          $commonHeader = @(
+          $iniLines = @(
             "[Common]",
             "Login=$login",
             "Password=$pass",
             "Server=$server",
             "KeepPrivate=1",
-            "NewsEnable=0"
-          )
+            "NewsEnable=0",
+            "",
+            "[Tester]",
+            "Expert=MyTrader97_AITurbo.ex5",
+            "Symbol=${{ matrix.symbol }}",
+            "Period=M5",
+            "Login=$login",
+            "Model=${{ github.event.inputs.model_mode }}",
+            "ExecutionMode=0",
+            "Optimization=$optFlag",
+            "OptimizationCriterion=6",
+            "FromDate=${{ github.event.inputs.date_from }}",
+            "ToDate=${{ github.event.inputs.date_to }}",
+            "ForwardMode=$fwdFlag",
+            "Deposit=5000",
+            "Currency=USD",
+            "Leverage=2000",
+            "UseLocal=1",
+            "UseRemote=0",
+            "UseCloud=0",
+            "Visual=0",
+            "Report=reports\mt97_${{ matrix.symbol }}.htm",
+            "ReplaceReport=1",
+            "ShutdownTerminal=1",
+            "",
+            "[TesterInputs]"
+          ) + $setLines
 
-          $outBody = foreach ($line in $baseIni) {
-            if ($line -match "^Login=") { "Login=$login" }
-            elseif ($line -match "^Password=") { "Password=$pass" }
-            elseif ($line -match "^Server=") { "Server=$server" }
-            elseif ($line -match "^Symbol=") { "Symbol=${{ matrix.symbol }}" }
-            elseif ($line -match "^FromDate=") { "FromDate=${{ github.event.inputs.date_from }}" }
-            elseif ($line -match "^ToDate=") { "ToDate=${{ github.event.inputs.date_to }}" }
-            elseif ($line -match "^Model=") { "Model=${{ github.event.inputs.model_mode }}" }
-            elseif ($line -match "^Optimization=") { "Optimization=$optFlag" }
-            elseif ($line -match "^ForwardMode=") { "ForwardMode=$fwdFlag" }
-            elseif ($line -match "^ExpertParameters=") { "ExpertParameters=${{ matrix.preset }}" }
-            elseif ($line -match "^Report=") { "Report=reports\mt97_${{ matrix.symbol }}.htm" }
-            else { $line }
-          }
-
-          ($commonHeader + $outBody) | Set-Content "C:\MT5\Config\run_${{ matrix.symbol }}.ini"
+          $iniLines | Set-Content "C:\MT5\Config\run_${{ matrix.symbol }}.ini"
 
       - name: Run MT5 Strategy Tester (${{ matrix.symbol }})
         shell: powershell
@@ -165,8 +164,9 @@ jobs:
         if: always()
         shell: powershell
         run: |
-          if (Test-Path "MQL5\Experts\parse_mt97_results.py") {
-            python MQL5/Experts/parse_mt97_results.py "${{ matrix.symbol }}" "C:\MT5\reports"
+          $parser = Get-ChildItem -Path "." -Recurse -Filter "parse_mt97_results.py" | Select-Object -First 1
+          if ($parser -and (Test-Path "C:\MT5\reports")) {
+            python $parser.FullName "${{ matrix.symbol }}" "C:\MT5\reports"
           }
 
       - name: Upload Symbol Reports
@@ -177,4 +177,5 @@ jobs:
           path: |
             C:\MT5\reports\
             C:\MT5\Tester\logs\
+            C:\MT5\logs\
           if-no-files-found: warn
