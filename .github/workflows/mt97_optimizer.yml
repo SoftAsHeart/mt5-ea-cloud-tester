@@ -33,24 +33,25 @@ jobs:
     name: ${{ matrix.symbol }} (${{ github.event.inputs.run_mode }})
     runs-on: windows-latest
     timeout-minutes: 120
-    strategy:
+        strategy:
       fail-fast: false
       matrix:
         include:
-          - symbol: USDJPYm
+          - symbol: USDJPYc
             preset: MT97_USDJPY_M5.set
-          - symbol: EURUSDm
+          - symbol: EURUSDc
             preset: MT97_EURUSD_M5.set
-          - symbol: USDCADm
+          - symbol: USDCADc
             preset: MT97_USDCAD_M5.set
-          - symbol: AUDJPYm
+          - symbol: AUDJPYc
             preset: MT97_AUDJPY_M5.set
-          - symbol: EURJPYm
+          - symbol: EURJPYc
             preset: MT97_EURJPY_M5.set
-          - symbol: GBPUSDm
+          - symbol: GBPUSDc
             preset: MT97_GBPUSD_M5.set
-          - symbol: XAUUSDm
+          - symbol: XAUUSDc
             preset: MT97_XAUUSD_M5.set
+
 
     steps:
       - name: Checkout Repository
@@ -109,8 +110,10 @@ jobs:
           if (-not $setFile) { throw "Preset file ${{ matrix.preset }} not found in repository!" }
           $setLines = Get-Content $setFile.FullName | Where-Object { $_ -and -not $_.StartsWith(";") -and -not $_.StartsWith("#") }
 
-          $optFlag = if ("${{ github.event.inputs.run_mode }}" -eq "optimize") { "2" } else { "0" }
+                    $optFlag = if ("${{ github.event.inputs.run_mode }}" -eq "optimize") { "2" } else { "0" }
           $fwdFlag = if ("${{ github.event.inputs.run_mode }}" -eq "optimize") { "2" } else { "0" }
+          $repExt  = if ("${{ github.event.inputs.run_mode }}" -eq "optimize") { "xml" } else { "htm" }
+
 
           $iniLines = @(
             "[Common]",
