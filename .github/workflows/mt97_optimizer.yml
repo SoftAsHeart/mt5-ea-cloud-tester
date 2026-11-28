@@ -165,9 +165,10 @@ jobs:
         shell: powershell
         run: |
           $parser = Get-ChildItem -Path "." -Recurse -Filter "parse_mt97_results.py" | Select-Object -First 1
-          if ($parser -and (Test-Path "C:\MT5\reports")) {
-            python $parser.FullName "${{ matrix.symbol }}" "C:\MT5\reports"
+                   if ($parser -and (Test-Path "C:\MT5\reports")) {
+            python $parser.FullName "${{ matrix.symbol }}" "C:\MT5\reports" "${{ github.event.inputs.run_mode }}"
           }
+
 
       - name: Upload Symbol Reports
         if: always()
