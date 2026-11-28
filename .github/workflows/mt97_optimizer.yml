@@ -1,0 +1,151 @@
+name: MT97 AI Quantum 7-Pair Tester & Optimizer
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_mode:
+        description: 'Execution Mode (backtest = Single Pass Validation | optimize = Genetic + 1/3 Forward)'
+        required: true
+        default: 'backtest'
+        type: choice
+        options:
+          - backtest
+          - optimize
+      from_date:
+        description: 'Backtest Start Date (YYYY.MM.DD)'
+        required: true
+        default: '2026.05.01'
+        type: string
+      to_date:
+        description: 'Backtest End Date (YYYY.MM.DD)'
+        required: true
+        default: '2026.11.27'
+        type: string
+      model_mode:
+        description: 'Tick Model (1 = 1-Minute OHLC Fast | 4 = Real Ticks)'
+        required: true
+        default: '1'
+        type: choice
+        options:
+          - '1'
+          - '4'
+
+jobs:
+  run-mt5-matrix:
+    name: Test ${{ matrix.symbol }}
+    runs-on: windows-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        symbol:
+          - USDJPYm
+          - EURUSDm
+          - USDCADm
+          - AUDJPYm
+          - EURJPYm
+          - GBPUSDm
+          - XAUUSDm
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Exness MT5 Terminal (Portable)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "C:\MT5" | Out-Null
+          $installer = "C:\MT5\mt5setup.exe"
+          Invoke-WebRequest -Uri "https://download.mql5.com/cdn/web/exness.technologies.ltd/mt5/exness5setup.exe" -OutFile $installer
+          Start-Process -FilePath $installer -ArgumentList "/auto" -Wait
+          $installedDir = Get-ChildItem -Path "C:\Program Files" -Filter "*MetaTrader*" -Directory | Select-Object -First 1
+          if ($installedDir) {
+            Copy-Item -Path "$($installedDir.FullName)\*" -Destination "C:\MT5\" -Recurse -Force
+          }
+          New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Experts" | Out-Null
+          New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Presets" | Out-Null
+          New-Item -ItemType Directory -Force -Path "C:\MT5\MQL5\Profiles\Tester" | Out-Null
+
+      - name: Compile MyTrader97_AITurbo.mq5
+        shell: pwsh
+        run: |
+          Copy-Item -Path "ea\MyTrader97_AITurbo.mq5" -Destination "C:\MT5\MQL5\Experts\MyTrader97_AITurbo.mq5" -Force
+          $compileLog = "C:\MT5\compile.log"
+          Start-Process -FilePath "C:\MT5\metaeditor64.exe" -ArgumentList "/portable /compile:`"C:\MT5\MQL5\Experts\MyTrader97_AITurbo.mq5`" /log:`"$compileLog`"" -Wait
+          if (Test-Path $compileLog) {
+            Get-Content $compileLog -Encoding Unicode | Write-Host
+          }
+          if (!(Test-Path "C:\MT5\MQL5\Experts\MyTrader97_AITurbo.ex5")) {
+            throw "Compilation failed: MyTrader97_AITurbo.ex5 not found!"
+          }
+
+      - name: Configure Headless Tester INI & Preset
+        shell: pwsh
+        env:
+          MT5_LOGIN: ${{ secrets.MT5_LOGIN }}
+          MT5_PASSWORD: ${{ secrets.MT5_PASSWORD }}
+          MT5_SERVER: ${{ secrets.MT5_SERVER }}
+        run: |
+          $sym = "${{ matrix.symbol }}"
+          $cleanSym = $sym -replace 'm$', ''
+          $presetSrc = "presets\MT97_${cleanSym}_M5.set"
+          Copy-Item -Path $presetSrc -Destination "C:\MT5\MQL5\Profiles\Tester\MyTrader97_AITurbo.set" -Force
+
+          $optFlag = if ("${{ github.event.inputs.run_mode }}" -eq "optimize") { "2" } else { "0" }
+          $fwdMode = if ("${{ github.event.inputs.run_mode }}" -eq "optimize") { "3" } else { "0" }
+          $reportName = "Report_${sym}_${{ github.event.inputs.run_mode }}"
+
+          $ini = @"
+[Common]
+Login=$env:MT5_LOGIN
+Password=$env:MT5_PASSWORD
+Server=$env:MT5_SERVER
+KeepPrivate=1
+NewsEnable=0
+
+[Tester]
+Expert=MyTrader97_AITurbo.ex5
+ExpertParameters=MyTrader97_AITurbo.set
+Symbol=$sym
+Period=M5
+Model=${{ github.event.inputs.model_mode }}
+FromDate=${{ github.event.inputs.from_date }}
+ToDate=${{ github.event.inputs.to_date }}
+ForwardMode=$fwdMode
+Deposit=5000
+Currency=USD
+Leverage=2000
+Optimization=$optFlag
+OptimizationCriterion=6
+Report=$reportName
+ReplaceReport=1
+ShutdownTerminal=1
+"@
+          Set-Content -Path "C:\MT5\tester_run.ini" -Value $ini -Encoding ASCII
+
+      - name: Execute Strategy Tester
+        shell: pwsh
+        run: |
+          Start-Process -FilePath "C:\MT5\terminal64.exe" -ArgumentList "/portable /config:`"C:\MT5\tester_run.ini`"" -Wait
+          New-Item -ItemType Directory -Force -Path "results\${{ matrix.symbol }}" | Out-Null
+          Get-ChildItem -Path "C:\MT5" -Filter "Report_*" | Copy-Item -Destination "results\${{ matrix.symbol }}\" -Force
+          if (Test-Path "C:\MT5\Tester\logs") {
+            Copy-Item -Path "C:\MT5\Tester\logs\*" -Destination "results\${{ matrix.symbol }}\" -Force
+          }
+
+      - name: Parse & Summarize Results
+        shell: pwsh
+        run: |
+          python scripts/parse_mt97_results.py "results\${{ matrix.symbol }}" "${{ matrix.symbol }}" "${{ github.event.inputs.run_mode }}" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload Backtest Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mt97-report-${{ matrix.symbol }}
+          path: results/${{ matrix.symbol }}/
+          if-no-files-found: warn
